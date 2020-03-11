@@ -270,9 +270,6 @@ class ScenarioRunner(object):
 
         if self._args.reloadWorld:
             self.world = self.client.load_world(town)
-            settings = self.world.get_settings()
-            settings.fixed_delta_seconds = 1.0 / self.frame_rate
-            self.world.apply_settings(settings)
         else:
             # if the world should not be reloaded, wait at least until all ego vehicles are ready
             ego_vehicle_found = False
@@ -295,6 +292,10 @@ class ScenarioRunner(object):
         CarlaActorPool.set_world(self.world)
         CarlaDataProvider.set_world(self.world)
 
+        settings = self.world.get_settings()
+        settings.fixed_delta_seconds = 1.0 / self.frame_rate
+        self.world.apply_settings(settings)        
+
         if self._args.agent:
             settings = self.world.get_settings()
             settings.synchronous_mode = True
@@ -306,9 +307,9 @@ class ScenarioRunner(object):
         else:
             self.world.wait_for_tick()
 
-        if CarlaDataProvider.get_map().name != town:
-            print("The CARLA server uses the wrong map!")
-            print("This scenario requires to use map {}".format(town))
+        if CarlaDataProvider.get_map().name != town and CarlaDataProvider.get_map().name != "OpenDriveMap":
+            print("The CARLA server uses the wrong map: {}".format(CarlaDataProvider.get_map().name))
+            print("This scenario requires to use map: {}".format(town))
             return False
 
         return True

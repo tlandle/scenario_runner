@@ -143,16 +143,22 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
             self.town = logic.attrib.get('filepath', None)
 
         if self.town is not None and ".xodr" in self.town:
-            (_, tail) = os.path.split(self.town)
-            self.town = tail[:-5]
+            if not os.path.exists(self.town):
+                raise AttributeError("The provided RoadNetwork does not exist")
 
         # workaround for relative positions during init
         world = self.client.get_world()
         if world is None or world.get_map().name != self.town:
-            self.client.load_world(self.town)
+            if ".xodr" in self.town:
+                with open(self.town) as od_file:
+                    data = od_file.read()
+                self.client.generate_opendrive_world(str(data))
+            else:
+                self.client.load_world(self.town)
             world = self.client.get_world()
             CarlaDataProvider.set_world(world)
             world.wait_for_tick()
+            print("hier")
         else:
             CarlaDataProvider.set_world(world)
 
