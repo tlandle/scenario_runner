@@ -17,6 +17,7 @@
 ### :bug: Bug Fixes
 * Fixed spawning bugs for scenario DynamicObjectCrossing when it is part of a route
 * Fixed spawning bugs for scenarios VehicleTurningRight, VehicleTurningLeft when they are part of a route
+* Fixed bug causing the simulation to end after running in synchronous mode
 
 ## CARLA ScenarioRunner 0.9.8
 ### :rocket: New Features
