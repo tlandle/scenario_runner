@@ -1,5 +1,3 @@
-import sys; sys.path.append('/home/bradyzhou/code/')
-
 import time
 import datetime
 import pathlib
@@ -13,7 +11,7 @@ from PIL import Image, ImageDraw
 from carla_random.src.common import CONVERTER, COLOR
 
 from team_code.map_agent import MapAgent
-from team_code.common import PIDController
+from team_code.pid_controller import PIDController
 
 
 HAS_DISPLAY = True

@@ -1,5 +1,3 @@
-import sys; sys.path.append('/home/bradyzhou/code/')
-
 import time
 
 import numpy as np
@@ -11,7 +9,8 @@ from carla_random.src.carla_env import draw_traffic_lights
 
 from team_code.base_agent import BaseAgent
 from team_code.planner import RoutePlanner
-from team_code.common import PIDController
+from team_code.pid_controller import PIDController
+
 from srunner.scenariomanager.carla_data_provider import CarlaActorPool
 from leaderboard.autoagents.autonomous_agent import Track
 
