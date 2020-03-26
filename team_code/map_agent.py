@@ -3,7 +3,7 @@ import time
 import numpy as np
 import torch
 
-from carla_random.src.dataset import preprocess_semantic, heatmap_from_point
+from carla_random.src.dataset import preprocess_semantic
 from carla_random.src.common import COLOR
 from carla_random.src.carla_env import draw_traffic_lights
 

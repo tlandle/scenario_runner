@@ -156,32 +156,6 @@ class AutoPilot(MapAgent):
 
         return steer, throttle, brake
 
-    def save(self, far_node, near_command, steer, throttle, brake, tick_data):
-        frame = self.step // 10
-
-        pos = self._get_position(tick_data)
-        theta = self._get_orientation(tick_data)
-        speed = self._get_speed(tick_data)
-
-        data = {
-                'x': pos[0],
-                'y': pos[1],
-                'theta': theta,
-                'speed': speed,
-                'x_command': far_node[0],
-                'y_command': far_node[1],
-                'command': near_command.value,
-                'steer': steer,
-                'throttle': throttle,
-                'brake': brake,
-                }
-
-        (self.save_path / 'measurements' / ('%04d.json' % frame)).write_text(str(data))
-        Image.fromarray(tick_data['rgb']).save(self.save_path / 'rgb' / ('%04d.png' % frame))
-        Image.fromarray(tick_data['rgb_left']).save(self.save_path / 'rgb_left' / ('%04d.png' % frame))
-        Image.fromarray(tick_data['rgb_right']).save(self.save_path / 'rgb_right' / ('%04d.png' % frame))
-        Image.fromarray(tick_data['topdown']).save(self.save_path / 'topdown' / ('%04d.png' % frame))
-
     def run_step(self, input_data, timestamp):
         if not self.initialized:
             self._init()
@@ -229,6 +203,32 @@ class AutoPilot(MapAgent):
             self.save(far_node, near_command, steer, throttle, brake, data)
 
         return control
+
+    def save(self, far_node, near_command, steer, throttle, brake, tick_data):
+        frame = self.step // 10
+
+        pos = self._get_position(tick_data)
+        theta = self._get_orientation(tick_data)
+        speed = self._get_speed(tick_data)
+
+        data = {
+                'x': pos[0],
+                'y': pos[1],
+                'theta': theta,
+                'speed': speed,
+                'x_command': far_node[0],
+                'y_command': far_node[1],
+                'command': near_command.value,
+                'steer': steer,
+                'throttle': throttle,
+                'brake': brake,
+                }
+
+        (self.save_path / 'measurements' / ('%04d.json' % frame)).write_text(str(data))
+        Image.fromarray(tick_data['rgb']).save(self.save_path / 'rgb' / ('%04d.png' % frame))
+        Image.fromarray(tick_data['rgb_left']).save(self.save_path / 'rgb_left' / ('%04d.png' % frame))
+        Image.fromarray(tick_data['rgb_right']).save(self.save_path / 'rgb_right' / ('%04d.png' % frame))
+        Image.fromarray(tick_data['topdown']).save(self.save_path / 'topdown' / ('%04d.png' % frame))
 
     def _get_brake(self):
         actors = self._world.get_actors()
