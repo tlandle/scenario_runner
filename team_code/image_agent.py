@@ -41,7 +41,7 @@ class ImageAgent(BaseAgent):
         self._command_planner = RoutePlanner(10.0, 200, 512)
         self._command_planner.set_route(self._global_plan, True)
 
-        self._turn_controller = PIDController(K_P=0.8, K_I=0.75, K_D=0.4, n=40)
+        self._turn_controller = PIDController(K_P=0.7, K_I=0.75, K_D=0.4, n=40)
         self._speed_controller = PIDController(K_P=0.5, K_I=1.0, K_D=1.0, n=40)
 
         self.initialized = True
