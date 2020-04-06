@@ -1,3 +1,4 @@
+import os
 import time
 import datetime
 import pathlib
@@ -8,8 +9,7 @@ import carla
 
 from PIL import Image, ImageDraw
 
-from carla_random.src.common import CONVERTER, COLOR
-
+from team_code.carla_project.src.common import CONVERTER, COLOR
 from team_code.map_agent import MapAgent
 from team_code.pid_controller import PIDController
 
@@ -41,7 +41,24 @@ WEATHERS = [
 
 
 def get_entry_point():
-    return 'AutoPilot'
+    return 'DebugAutoPilot'
+
+
+def _numpy(carla_vector, normalize=False):
+    result = np.float32([carla_vector.x, carla_vector.y])
+
+    if normalize:
+        return result / (np.linalg.norm(result) + 1e-4)
+
+    return result
+
+
+def _location(x, y, z):
+    return carla.Location(x=float(x), y=float(y), z=float(z))
+
+
+def _orientation(yaw):
+    return np.float32([np.cos(np.radians(yaw)), np.sin(np.radians(yaw))])
 
 
 def get_angle(u, orientation):
@@ -76,19 +93,16 @@ def get_collision(p1, v1, p2, v2):
     return collides, p1 + x[0] * v1
 
 
-def _numpy(carla_vector):
-    return np.float32([carla_vector.x, carla_vector.y])
-
-
 class AutoPilot(MapAgent):
     def setup(self, path_to_conf_file):
         super().setup(path_to_conf_file)
 
-        if not path_to_conf_file:
-            self.save_path = None
-        else:
+        self.save_path = None
+
+        if path_to_conf_file:
             now = datetime.datetime.now()
-            string = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second)))
+            string = pathlib.Path(os.environ['ROUTES']).stem + '_'
+            string += '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second)))
 
             print(string)
 
@@ -104,8 +118,8 @@ class AutoPilot(MapAgent):
     def _init(self):
         super()._init()
 
-        self._turn_controller = PIDController(K_P=1.0, K_I=0.5, K_D=0.3, n=40)
-        self._speed_controller = PIDController(K_P=0.5, K_I=0.75, K_D=0.4, n=40)
+        self._turn_controller = PIDController(K_P=1.25, K_I=0.75, K_D=0.3, n=40)
+        self._speed_controller = PIDController(K_P=5.0, K_I=0.5, K_D=0.5, n=40)
 
     def _get_position(self, tick_data):
         gps = tick_data['gps']
@@ -116,45 +130,56 @@ class AutoPilot(MapAgent):
     def _get_speed(self, tick_data):
         return tick_data['speed']
 
-    def _get_target_speed(self, command, tick_data):
-        if command.name != 'LANEFOLLOW':
-            return 5.0
-
-        return self._vehicle.get_speed_limit() / 3.6 * 0.9
-
     def _get_orientation(self, tick_data):
         return tick_data['compass']
 
-    def _get_steer(self, target, command, tick_data, _draw):
-        pos = self._get_position(tick_data)
-        theta = self._get_orientation(tick_data)
-        speed = self._get_speed(tick_data)
-        target_speed = self._get_target_speed(command, tick_data)
-
-        # Steering.
+    def _get_angle_to(self, pos, theta, target):
         R = np.array([
             [np.cos(theta), -np.sin(theta)],
             [np.sin(theta),  np.cos(theta)],
             ])
+
         aim = R.T.dot(target - pos)
-        angle = (-np.degrees(np.arctan2(-aim[1], aim[0]))) / 90
+        angle = -np.degrees(np.arctan2(-aim[1], aim[0]))
+
+        return angle
+
+    def _get_control(self, target, far_target, tick_data, _draw):
+        pos = self._get_position(tick_data)
+        theta = self._get_orientation(tick_data)
+        speed = self._get_speed(tick_data)
+
+        # Steering.
+        angle_unnorm = self._get_angle_to(pos, theta, target)
+        angle = angle_unnorm / 90
+        # angle = angle if abs(angle_unnorm) > 1.0 else 0.0
+
         steer = self._turn_controller.step(angle)
         steer = np.clip(steer, -1.0, 1.0)
+        steer = round(steer, 3)
 
         # Acceleration.
-        delta = np.clip(target_speed - speed, 0.0, 1.0)
+        angle_far_unnorm = self._get_angle_to(pos, theta, far_target)
+        should_slow = abs(angle_far_unnorm) > 45.0 or abs(angle_unnorm) > 5.0
+        target_speed = 4 if should_slow else 7.0
+
+        brake = self._should_brake()
+        target_speed = target_speed if not brake else 0.0
+
+        delta = np.clip(target_speed - speed, 0.0, 0.25)
         throttle = self._speed_controller.step(delta)
         throttle = np.clip(throttle, 0.0, 0.75)
-        brake = self._get_brake()
 
         if brake:
+            steer *= 0.5
             throttle = 0.0
 
         _draw.text((5, 90), 'Speed: %.3f' % speed)
         _draw.text((5, 110), 'Target: %.3f' % target_speed)
-        _draw.text((5, 130), 'Angle: %.3f' % angle)
+        _draw.text((5, 130), 'Angle: %.3f' % angle_unnorm)
+        _draw.text((5, 150), 'Angle Far: %.3f' % angle_far_unnorm)
 
-        return steer, throttle, brake
+        return steer, throttle, brake, target_speed
 
     def run_step(self, input_data, timestamp):
         if not self.initialized:
@@ -183,7 +208,7 @@ class AutoPilot(MapAgent):
         _combined = Image.fromarray(np.hstack((_rgb, _topdown)))
         _draw = ImageDraw.Draw(_combined)
 
-        steer, throttle, brake = self._get_steer(near_node, near_command, data, _draw)
+        steer, throttle, brake, target_speed = self._get_control(near_node, far_node, data, _draw)
 
         _draw.text((5, 10), 'FPS: %.3f' % (self.step / (time.time() - self.wall_start)))
         _draw.text((5, 30), 'Steer: %.3f' % steer)
@@ -195,16 +220,16 @@ class AutoPilot(MapAgent):
             cv2.waitKey(1)
 
         control = carla.VehicleControl()
-        control.steer = steer
+        control.steer = steer + 1e-2 * np.random.randn()
         control.throttle = throttle
-        control.brake = brake
+        control.brake = float(brake)
 
         if self.step % 10 == 0:
-            self.save(far_node, near_command, steer, throttle, brake, data)
+            self.save(far_node, near_command, steer, throttle, brake, target_speed, data)
 
         return control
 
-    def save(self, far_node, near_command, steer, throttle, brake, tick_data):
+    def save(self, far_node, near_command, steer, throttle, brake, target_speed, tick_data):
         frame = self.step // 10
 
         pos = self._get_position(tick_data)
@@ -216,6 +241,7 @@ class AutoPilot(MapAgent):
                 'y': pos[1],
                 'theta': theta,
                 'speed': speed,
+                'target_speed': target_speed,
                 'x_command': far_node[0],
                 'y_command': far_node[1],
                 'command': near_command.value,
@@ -225,84 +251,102 @@ class AutoPilot(MapAgent):
                 }
 
         (self.save_path / 'measurements' / ('%04d.json' % frame)).write_text(str(data))
+
         Image.fromarray(tick_data['rgb']).save(self.save_path / 'rgb' / ('%04d.png' % frame))
         Image.fromarray(tick_data['rgb_left']).save(self.save_path / 'rgb_left' / ('%04d.png' % frame))
         Image.fromarray(tick_data['rgb_right']).save(self.save_path / 'rgb_right' / ('%04d.png' % frame))
         Image.fromarray(tick_data['topdown']).save(self.save_path / 'topdown' / ('%04d.png' % frame))
 
-    def _get_brake(self):
+    def _should_brake(self):
         actors = self._world.get_actors()
 
-        blocking_vehicle, vehicle = self._is_vehicle_hazard(actors.filter('*vehicle*'))
-        blocking_light, traffic_light = self._is_light_red(actors.filter('*traffic_light*'))
-        blocking_walker, walker = self._is_walker_hazard(actors.filter('*walker*'))
+        vehicle = self._is_vehicle_hazard(actors.filter('*vehicle*'))
+        light = self._is_light_red(actors.filter('*traffic_light*'))
+        walker = self._is_walker_hazard(actors.filter('*walker*'))
 
-        return blocking_vehicle or blocking_light or blocking_walker
+        return any(x is not None for x in [vehicle, light, walker])
+
+    def _draw_line(self, p, v, z, color=(255, 0, 0)):
+        if not DEBUG:
+            return
+
+        p1 = _location(p[0], p[1], z)
+        p2 = _location(p[0]+v[0], p[1]+v[1], z)
+        color = carla.Color(*color)
+
+        self._world.debug.draw_line(p1, p2, 0.25, color, 0.01)
 
     def _is_light_red(self, lights_list):
         if self._vehicle.get_traffic_light_state() != carla.libcarla.TrafficLightState.Green:
-            return True, self._vehicle.get_traffic_light()
+            return self._vehicle.get_traffic_light()
 
-        return False, None
+        return None
 
     def _is_walker_hazard(self, walkers_list):
+        z = self._vehicle.get_location().z
         p1 = _numpy(self._vehicle.get_location())
-        v1 = _numpy(self._vehicle.get_velocity())
-        v1_hat = v1 / (np.linalg.norm(v1) + 1e-3)
-        v1 = max(15.0, 3.0 * np.linalg.norm(v1)) * v1_hat
+        v1 = 10.0 * _orientation(self._vehicle.get_transform().rotation.yaw)
+
+        self._draw_line(p1, v1, z+2.5, (0, 0, 255))
 
         for walker in walkers_list:
-            v2 = _numpy(walker.get_velocity())
-            v2_hat = v2 / (np.linalg.norm(v2) + 1e-3)
-            p2 = _numpy(walker.get_location()) - 1.0 * v2_hat
+            v2_hat = _orientation(walker.get_transform().rotation.yaw)
+            p2 = -3.0 * v2_hat + _numpy(walker.get_location())
+            v2 = 8.0 * v2_hat
 
-            collides, collision_point = get_collision(p1, v1, p2, 6.0 * v2)
+            self._draw_line(p2, v2, z+2.5)
 
-            if DEBUG:
-                self._world.debug.draw_line(
-                        carla.Location(x=float(p2[0]), y=float(p2[1]), z=float(walker.get_location().z+2.5)),
-                        carla.Location(x=float(p2[0]+v2[0]), y=float(p2[1]+v2[1]), z=float(walker.get_location().z+2.5)),
-                        life_time=0.01, thickness=0.5)
+            collides, collision_point = get_collision(p1, v1, p2, v2)
 
             if collides:
-                return True, walker
+                return walker
 
-        return False, None
+        return None
 
     def _is_vehicle_hazard(self, vehicle_list):
-        p1 = _numpy(self._vehicle.get_location())
-        speed = np.linalg.norm(_numpy(self._vehicle.get_velocity()))
-        v1 = 2.0 * _numpy(self._vehicle.get_velocity())
-        o1 = self._vehicle.get_transform().rotation.yaw
+        z = self._vehicle.get_location().z
 
-        if DEBUG:
-            self._world.debug.draw_line(
-                    carla.Location(x=float(p1[0]), y=float(p1[1]), z=float(self._vehicle.get_location().z+2.5)),
-                    carla.Location(x=float(p1[0]+v1[0]), y=float(p1[1]+v1[1]), z=float(self._vehicle.get_location().z+2.5)),
-                    life_time=0.01, thickness=0.5)
+        o1 = _orientation(self._vehicle.get_transform().rotation.yaw)
+        p1 = _numpy(self._vehicle.get_location())
+        s1 = max(7.5, 2.0 * np.linalg.norm(_numpy(self._vehicle.get_velocity())))
+        v1_hat = o1
+        v1 = s1 * v1_hat
+
+        self._draw_line(p1, v1, z+2.5, (255, 0, 0))
 
         for target_vehicle in vehicle_list:
             if target_vehicle.id == self._vehicle.id:
                 continue
 
+            o2 = _orientation(target_vehicle.get_transform().rotation.yaw)
             p2 = _numpy(target_vehicle.get_location())
-            v2 = 2.0 * _numpy(target_vehicle.get_velocity())
-            o2 = target_vehicle.get_transform().rotation.yaw
+            s2 = max(5.0, 2.0 * np.linalg.norm(_numpy(target_vehicle.get_velocity())))
+            v2_hat = o2
+            v2 = s2 * v2_hat
 
-            collides, _ = get_collision(p1, v1, p2, v2)
-            distance = np.linalg.norm(p1 - p2)
-            angle = get_angle(p2 - p1, o1)
-            dot = get_dot(o1, o2)
+            p2_p1 = p2 - p1
+            distance = np.linalg.norm(p2_p1)
+            p2_p1_hat = p2_p1 / (distance + 1e-4)
 
-            if DEBUG:
-                self._world.debug.draw_line(
-                        carla.Location(x=float(p2[0]), y=float(p2[1]), z=float(target_vehicle.get_location().z+2.5)),
-                        carla.Location(x=float(p2[0]+v2[0]), y=float(p2[1]+v2[1]), z=float(target_vehicle.get_location().z+2.5)),
-                        life_time=0.01, thickness=0.5)
+            self._draw_line(p2, v2, z+2.5, (255, 0, 0))
 
-            if collides:
-                return True, target_vehicle
-            elif abs(angle) <= 15 and dot >= 0 and (distance < 9.0 or distance < 2.0 * speed):
-                return True, target_vehicle
+            if np.degrees(np.arccos(o1.dot(o2))) > 60.0:
+                continue
+            elif np.degrees(np.arccos(v1_hat.dot(p2_p1_hat))) > 30.0:
+                continue
+            elif distance > s1:
+                continue
 
-        return False, None
+            return target_vehicle
+
+        return None
+
+
+class DebugAutoPilot(AutoPilot):
+    def run_step(self, *args, **kwargs):
+        import traceback
+
+        try:
+            return super().run_step(*args, **kwargs)
+        except Exception:
+            traceback.print_exc()

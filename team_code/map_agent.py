@@ -3,9 +3,9 @@ import time
 import numpy as np
 import torch
 
-from carla_random.src.dataset import preprocess_semantic
-from carla_random.src.common import COLOR
-from carla_random.src.carla_env import draw_traffic_lights
+from carla_project.src.dataset import preprocess_semantic
+from carla_project.src.common import COLOR
+from carla_project.src.carla_env import draw_traffic_lights
 
 from team_code.base_agent import BaseAgent
 from team_code.planner import RoutePlanner
@@ -53,7 +53,7 @@ class MapAgent(BaseAgent):
         self._vehicle = CarlaActorPool.get_hero_actor()
         self._world = self._vehicle.get_world()
 
-        self._command_planner = RoutePlanner(10.0, 200, 257)
+        self._command_planner = RoutePlanner(7.5, 200, 257)
         self._command_planner.set_route(self._global_plan, True)
 
         self._waypoint_planner = RoutePlanner(4.0, 50)

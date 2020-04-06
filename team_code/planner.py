@@ -93,6 +93,6 @@ class RoutePlanner(object):
 
         u = (gps - gps) * 5.5
         self.debug.dot(u[0], u[1], (0, 0, 255), 1)
-        # self.debug.show()
+        self.debug.show()
 
         return self.route[1]
