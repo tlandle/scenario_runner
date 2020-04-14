@@ -41,7 +41,7 @@ WEATHERS = [
 
 
 def get_entry_point():
-    return 'DebugAutoPilot'
+    return 'AutoPilot'
 
 
 def _numpy(carla_vector, normalize=False):
@@ -59,25 +59,6 @@ def _location(x, y, z):
 
 def _orientation(yaw):
     return np.float32([np.cos(np.radians(yaw)), np.sin(np.radians(yaw))])
-
-
-def get_angle(u, orientation):
-    v = np.array([
-        np.cos(np.radians(orientation)),
-        np.sin(np.radians(orientation))])
-
-    return np.sign(np.cross(u, v)) * np.degrees(np.arccos(np.dot(u, v) / (np.linalg.norm(u) + 1e-3)))
-
-
-def get_dot(target_orientation, current_orientation):
-    u = np.array([
-        np.cos(np.radians(target_orientation)),
-        np.sin(np.radians(target_orientation))])
-    v = np.array([
-        np.cos(np.radians(current_orientation)),
-        np.sin(np.radians(current_orientation))])
-
-    return np.dot(u, v)
 
 
 def get_collision(p1, v1, p2, v2):
@@ -119,19 +100,7 @@ class AutoPilot(MapAgent):
         super()._init()
 
         self._turn_controller = PIDController(K_P=1.25, K_I=0.75, K_D=0.3, n=40)
-        self._speed_controller = PIDController(K_P=5.0, K_I=0.5, K_D=0.5, n=40)
-
-    def _get_position(self, tick_data):
-        gps = tick_data['gps']
-        gps = (gps - self._waypoint_planner.mean) * self._waypoint_planner.scale
-
-        return gps
-
-    def _get_speed(self, tick_data):
-        return tick_data['speed']
-
-    def _get_orientation(self, tick_data):
-        return tick_data['compass']
+        self._speed_controller = PIDController(K_P=5.0, K_I=0.5, K_D=1.0, n=40)
 
     def _get_angle_to(self, pos, theta, target):
         R = np.array([
@@ -141,18 +110,18 @@ class AutoPilot(MapAgent):
 
         aim = R.T.dot(target - pos)
         angle = -np.degrees(np.arctan2(-aim[1], aim[0]))
+        angle = 0.0 if np.isnan(angle) else angle 
 
         return angle
 
     def _get_control(self, target, far_target, tick_data, _draw):
         pos = self._get_position(tick_data)
-        theta = self._get_orientation(tick_data)
-        speed = self._get_speed(tick_data)
+        theta = tick_data['compass']
+        speed = tick_data['speed']
 
         # Steering.
         angle_unnorm = self._get_angle_to(pos, theta, target)
         angle = angle_unnorm / 90
-        # angle = angle if abs(angle_unnorm) > 1.0 else 0.0
 
         steer = self._turn_controller.step(angle)
         steer = np.clip(steer, -1.0, 1.0)
@@ -233,8 +202,8 @@ class AutoPilot(MapAgent):
         frame = self.step // 10
 
         pos = self._get_position(tick_data)
-        theta = self._get_orientation(tick_data)
-        speed = self._get_speed(tick_data)
+        theta = tick_data['compass']
+        speed = tick_data['speed']
 
         data = {
                 'x': pos[0],
@@ -278,7 +247,11 @@ class AutoPilot(MapAgent):
 
     def _is_light_red(self, lights_list):
         if self._vehicle.get_traffic_light_state() != carla.libcarla.TrafficLightState.Green:
-            return self._vehicle.get_traffic_light()
+            affecting = self._vehicle.get_traffic_light()
+
+            for light in self._traffic_lights:
+                if light.id == affecting.id:
+                    return affecting
 
         return None
 
@@ -291,6 +264,11 @@ class AutoPilot(MapAgent):
 
         for walker in walkers_list:
             v2_hat = _orientation(walker.get_transform().rotation.yaw)
+            s2 = np.linalg.norm(_numpy(walker.get_velocity()))
+
+            if s2 < 0.05:
+                v2_hat *= s2
+
             p2 = -3.0 * v2_hat + _numpy(walker.get_location())
             v2 = 8.0 * v2_hat
 
@@ -330,9 +308,12 @@ class AutoPilot(MapAgent):
 
             self._draw_line(p2, v2, z+2.5, (255, 0, 0))
 
-            if np.degrees(np.arccos(o1.dot(o2))) > 60.0:
+            angle_to_car = np.degrees(np.arccos(v1_hat.dot(p2_p1_hat)))
+            angle_between_heading = np.degrees(np.arccos(o1.dot(o2)))
+
+            if angle_between_heading > 60.0 and not (angle_to_car < 15 and distance < s1):
                 continue
-            elif np.degrees(np.arccos(v1_hat.dot(p2_p1_hat))) > 30.0:
+            elif angle_to_car > 30.0:
                 continue
             elif distance > s1:
                 continue
@@ -340,13 +321,3 @@ class AutoPilot(MapAgent):
             return target_vehicle
 
         return None
-
-
-class DebugAutoPilot(AutoPilot):
-    def run_step(self, *args, **kwargs):
-        import traceback
-
-        try:
-            return super().run_step(*args, **kwargs)
-        except Exception:
-            traceback.print_exc()

@@ -1,7 +1,10 @@
+import time
+
 import cv2
 import carla
 
 from leaderboard.autoagents import autonomous_agent
+from team_code.planner import RoutePlanner
 
 
 class BaseAgent(autonomous_agent.AutonomousAgent):
@@ -9,6 +12,20 @@ class BaseAgent(autonomous_agent.AutonomousAgent):
         self.track = autonomous_agent.Track.SENSORS
         self.config_path = path_to_conf_file
         self.step = -1
+        self.wall_start = time.time()
+        self.initialized = False
+
+    def _init(self):
+        self._command_planner = RoutePlanner(7.5, 25.0, 257)
+        self._command_planner.set_route(self._global_plan, True)
+
+        self.initialized = True
+
+    def _get_position(self, tick_data):
+        gps = tick_data['gps']
+        gps = (gps - self._command_planner.mean) * self._command_planner.scale
+
+        return gps
 
     def sensors(self):
         return [

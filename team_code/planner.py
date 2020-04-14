@@ -15,7 +15,8 @@ class Plotter(object):
         self.img = Image.fromarray(np.zeros((self.size, self.size, 3), dtype=np.uint8))
         self.draw = ImageDraw.Draw(self.img)
 
-    def dot(self, x, y, color=(255, 255, 255), r=2):
+    def dot(self, pos, node, color=(255, 255, 255), r=2):
+        x, y = 5.5 * (pos - node)
         x += self.size / 2
         y += self.size / 2
 
@@ -34,13 +35,13 @@ class RoutePlanner(object):
         self.min_distance = min_distance
         self.max_distance = max_distance
 
+        self.mean = np.array([49.0, 8.0])
+        self.scale = np.array([111324.60662786, 73032.1570362])
+
         self.debug = Plotter(debug_size)
 
     def set_route(self, global_plan, gps=False):
         self.route.clear()
-
-        self.mean = np.array([49.0, 8.0])
-        self.scale = np.array([111324.60662786, 73032.1570362])
 
         for pos, cmd in global_plan:
             if gps:
@@ -70,29 +71,22 @@ class RoutePlanner(object):
             cumulative_distance += np.linalg.norm(self.route[i][0] - self.route[i-1][0])
             distance = np.linalg.norm(self.route[i][0] - gps)
 
-            u = (self.route[i][0] - gps) * 5.5
-
-            if distance > self.min_distance:
-                self.debug.dot(u[0], u[1], (255, 255 * int(self.route[i][1].value == 4), 255))
-            else:
-                self.debug.dot(u[0], u[1], (0, 255 * int(self.route[i][1].value == 4), 255))
-
             if distance <= self.min_distance and distance > farthest_in_range:
                 farthest_in_range = distance
                 to_pop = i
+
+            r = 255 * int(distance > self.min_distance)
+            g = 255 * int(self.route[i][1].value == 4)
+            b = 255
+            self.debug.dot(gps, self.route[i][0], (r, g, b))
 
         for _ in range(to_pop):
             if len(self.route) > 2:
                 self.route.popleft()
 
-        u = (self.route[0][0] - gps) * 5.5
-        self.debug.dot(u[0], u[1], (0, 255, 0))
-
-        u = (self.route[1][0] - gps) * 5.5
-        self.debug.dot(u[0], u[1], (255, 0, 0))
-
-        u = (gps - gps) * 5.5
-        self.debug.dot(u[0], u[1], (0, 0, 255), 1)
+        self.debug.dot(gps, self.route[0][0], (0, 255, 0))
+        self.debug.dot(gps, self.route[1][0], (255, 0, 0))
+        self.debug.dot(gps, gps, (0, 0, 255))
         self.debug.show()
 
         return self.route[1]
