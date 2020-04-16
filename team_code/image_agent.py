@@ -6,8 +6,8 @@ import carla
 
 from PIL import Image, ImageDraw
 
-from team_code.carla_project.src.image_model import ImageModel
-from team_code.carla_project.src.converter import Converter
+from carla_project.src.image_model import ImageModel
+from carla_project.src.converter import Converter
 
 from team_code.base_agent import BaseAgent
 from team_code.pid_controller import PIDController

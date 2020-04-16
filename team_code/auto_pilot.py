@@ -9,7 +9,7 @@ import carla
 
 from PIL import Image, ImageDraw
 
-from team_code.carla_project.src.common import CONVERTER, COLOR
+from carla_project.src.common import CONVERTER, COLOR
 from team_code.map_agent import MapAgent
 from team_code.pid_controller import PIDController
 
