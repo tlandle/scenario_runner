@@ -1,5 +1,7 @@
 ## Table of Contents
 * [Latest Changes](#latest-changes)
+* [CARLA ScenarioRunner 0.9.9](#carla-scenariorunner-099)
+* [CARLA ScenarioRunner 0.9.8](#carla-scenariorunner-098)
 * [CARLA ScenarioRunner 0.9.7](#carla-scenariorunner-097)
 * [CARLA ScenarioRunner 0.9.6](#carla-scenariorunner-096)
 * [CARLA ScenarioRunner 0.9.5.1](#carla-scenariorunner-0951)
@@ -7,6 +9,81 @@
 * [CARLA ScenarioRunner 0.9.2](#carla-scenariorunner-092)
 
 ## Latest Changes
+### :rocket: New Features
+* Renamed some agent labels inside Jenkins CI pipelines for new standard proposals.
+* Added support for Jenkins CI pipelines doing automated testing and docker images creation. It builds docker images for Scenario Runner, tags them with the commit id that triggers the pipeline, and stores those images into a shared Elastic Container Registry. 
+* **Very important:** CarlaActorPool has been removed and all its functions moved to the CarlaDataProvider:
+    - The spawning functions have been refactored. All the *setup* functions have been removed, and its functionalities moved to their *request* counterparts. For example, previously *request_new_actor* just called *setup_actor*, but now *setup_actor* no longer exists, and the spawning is done via *request_new_actor*. They have also been unified and are now more consistent.
+    - Changed *ActorConfiguration* to *ActorConfigurationData.parse_from_node*
+    - Renamed the _map_ element at routes to _town_, matching the scenario configuration files
+
+* Added new environment variables needed. They can be seen at (Docs/getting_scenariorunner.md).
+* Improved the visual display of the information from the *output* and *file* arguments.
+* Routes are now deterministic in regards to the spawning scenarios when more than one are at the same location
+* The BackgroundActivity functionality has been unchanged but some tweaks have been made, fixing a previous patch. As a result, the *amount* parameter at *ActorConfigurationData* has been removed.
+* Remade how ScenarioRunner reads the scenarios files. It now reads all scenarios inside the *srunner/scenarios* folder without needing to import them. Scenarios outside that folder will still need the *--additionalScenario* argument.
+* The new weather parameters (related to fog) are now correctly read when running scenarios outside routes.
+* Enable weather animation during scenario execution (requires ephem pip package)
+* Changed manual control to be in par with the CARLA version. Among others, added vehicle lights, recording and some new sensors
+* Removed unsupported scenarios (ChallengeBasic and BackgroundActivity, VehicleTurnLeftAtJunction) 
+* OpenSCENARIO support:
+    - Added support for controllers and provided default implementations for vehicles and pedestrians. This required changing the handling of actors, which results in that now all actors are controlled by an OSC controller. Supported controllers:
+        - Pedestrian controller
+        - NPC vehicle controller (based on CARLA LocalPlanner)
+        - Simple vehicle controller to set velocities not brake/throttle
+        - External controller (to forward control to external entities)
+    - Added initial speed support for pedestrians for OpenSCENARIO
+    - Support for EnvironmentActions within Story (before only within Init). This allows changing weather conditions during scenario execution
+    - Added support for RelativeSpeedCondition
+    - Added support for AccelerationCondition
+    - Added support for TimeOfDayCondition
+    - Added support for OffroadCondition
+    - Added support for CollisionCondition
+    - Added support for EndOfRoadCondition
+    - Added support for TimeHeadwayCondition
+    - Added support for TrafficSignalCondition
+    - Extended FollowLeadingVehicle example to illustrate weather changes
+    - Created example scenarios to illustrate usage of controllers and weather changes
+    - Reworked the handling of Catalogs to make it compliant to the 1.0 version (relative paths have to be relative to the scenario file)
+    - The RoadNetwork can be defined as global Parameter
+    - Fixed handling of relative positions with negative offset
+    - Added support for local ParamaterDeclarations
+    - Fixed use of relative initial positions for any actor
+    - Added possibility to use synchronous execution mode with OpenSCENARIO
+    - Fixed use of relative paths in CustomCommandAction
+* Atomics:
+    - Several new atomics to enable usage of OSC controllers
+    - WeatherBehavior to simulate weather over time
+    - UpdateWeather to update weather to a new setting, e.g. sun to rain
+    - UpdateRoadFriction to update the road friction while running
+    - new RelativeVelocityToOtherActor trigger condition, used to compare velocities of two actors
+    - new TriggerAcceleration trigger condition which compares a reference acceleration with the actor's one.
+    - new TimeOfDayComparison trigger condition, comparing the simulation time (set up by the new weather system) with a given *datetime*.
+    - Added new *OffRoadTest* criteria.
+    - Added new *EndofRoadTest* criteria, to detect when a vehicle changes between OpenDRIVE roads.
+    - CollisionTest criterion can now filter the collisions for a specific actor, or actor type_id.
+    - Added a *duration* argument to *OnSidewalkTest* criteria, which makes the criteria fail after a certain time has passed, instead of doing so immediately. The default behavior has been unchanged.
+    - InTimeToArrivalToVehicle has had its two actor arguments swapped, to match all the other behaviors.
+    - Added *along_route* flag to InTimeToArrivalToVehicle, to take into account the topology of the road
+    - Changed the inputs to TrafficLightStateSetter to match the other atomics, but the functionality remains unchanged
+
+### :bug: Bug Fixes
+* Add cleanup of instantiated OpenSCENARIO controllers
+* Do not register SIGHUP signal in windows
+* Fixed initial speed of vehicles using OpenSCENARIO
+* Fixed bug causing an exception when calling BasicScenario's *_initialize_actors* with no other_actors.
+* Fixed bug causing the route to be downsampled (introduced by mistake at 0.9.9)
+* Fixed bug causing _output_ argument to not display the correct number with _InRouteTest_ and _RouteCompletionTest_ criterias (the succces and failure was correctly displayed)
+* Fixed bug causing OpenSCENARIO's SpeedCondition to not work as intended
+* Fixed bug causing CollisionConditions not to work properly in OpenSCENARIO
+* Fixed bug causing the *group:* functionality to behave incorrectly when moving scenarios around.
+* Fixed bug causing FollowLeadingVehicle and FollowLeadingVehicleWithObstacle scenarios to not properly end
+* Fixed bug causing CollisionTest to ignore multiple collisions with scene objects
+* Fixed bug causing NoSignalJunctionCrossing to not output the results of the scenario
+* Fixed bug causing SyncArrival to fail when the actor was destroyed after the behavior ended
+
+
+## CARLA ScenarioRunner 0.9.9
 ### :rocket: New Features
 * OpenSCENARIO support:
     - Support for OpenSCENARIO 1.0 (a converter for old scenarios is available)
@@ -26,7 +103,6 @@
 * **Important** All challenge related content has been removed. This functionality has been improved and is now part of the [Leaderboard](https://github.com/carla-simulator/leaderboard). As a consequence:
     - The path to the autoagents has changed from .../challenge/autoagents to .../autoagents
     - The path to the route and scenario descriptions has changed from .../challenge to .../data
-
 ### :bug: Bug Fixes
 * Fixed spawning bugs for scenario DynamicObjectCrossing when it is part of a route
 * Fixed spawning bugs for scenarios VehicleTurningRight, VehicleTurningLeft when they are part of a route
@@ -36,6 +112,9 @@
 * Fixed bug causing the simulation to end after running in synchronous mode
 * Fixed bug when using the WaypointFollower atomic to create new LocalPlanners for on-the-fly created actors (#502)
 * Fixed bug causing the scenarios to run faster than real time.
+### :ghost: Maintenance
+* Removed perform_carla_tick() function at CarlaDataProvider, which was a workaround for world.tick()
+
 
 ## CARLA ScenarioRunner 0.9.8
 ### :rocket: New Features
