@@ -10,8 +10,11 @@ This module contains the result gatherer and write for CARLA scenarios.
 It shall be used from the ScenarioManager only.
 """
 
-import logging
+from __future__ import print_function
+
 import time
+import json
+from tabulate import tabulate
 
 
 class ResultOutputProvider(object):
@@ -21,74 +24,85 @@ class ResultOutputProvider(object):
     It shall be used from the ScenarioManager only.
     """
 
-    def __init__(self, data, result, stdout=True, filename=None, junit=None):
+    def __init__(self, data, result, stdout=True, filename=None, junitfile=None, jsonfile=None):
         """
         Setup all parameters
         - _data contains all scenario-related information
         - _result is overall pass/fail info
         - _stdout (True/False) is used to (de)activate terminal output
         - _filename is used to (de)activate file output in tabular form
-        - _junit is used to (de)activate file output in _junit form
+        - _junit is used to (de)activate file output in junit form
+        - _json is used to (de)activate file output in json form
         """
         self._data = data
         self._result = result
         self._stdout = stdout
         self._filename = filename
-        self._junit = junit
+        self._junit = junitfile
+        self._json = jsonfile
 
         self._start_time = time.strftime('%Y-%m-%d %H:%M:%S',
                                          time.localtime(self._data.start_system_time))
         self._end_time = time.strftime('%Y-%m-%d %H:%M:%S',
                                        time.localtime(self._data.end_system_time))
 
-        self.logger = logging.getLogger("ResultProvider")
-        self.logger.setLevel(logging.INFO)
-        self.logger.propagate = False
-
     def write(self):
         """
         Public write function
         """
-        if self._stdout:
-            channel = logging.StreamHandler()
-            self.logger.addHandler(channel)
-        if self._filename is not None:
-            filehandle = logging.FileHandler(self._filename)
-            self.logger.addHandler(filehandle)
         if self._junit is not None:
             self._write_to_junit()
+        if self._json is not None:
+            self._write_to_reportjson()
 
-        if self._stdout or (self._filename is not None):
-            self._write_to_logger()
-            self.logger.handlers = []
+        output = self.create_output_text()
+        if self._filename is not None:
+            with open(self._filename, 'w') as fd:
+                fd.write(output)
+        if self._stdout:
+            print(output)
 
-    def _write_to_logger(self):
+    def create_output_text(self):
         """
-        Writing to logger automatically writes to all handlers in parallel,
-        i.e. stdout and file are both captured with this function
+        Creates the output message
         """
-        self.logger.info("\n")
-        self.logger.info("Scenario: %s --- Result: %s",
-                         self._data.scenario_tree.name, self._result)
-        self.logger.info("Start time: %s", (self._start_time))
-        self.logger.info("End time: %s", (self._end_time))
-        self.logger.info("Duration: System Time %5.2fs --- Game Time %5.2fs",
-                         self._data.scenario_duration_system,
-                         self._data.scenario_duration_game)
+        output = "\n"
+        output += " ======= Results of Scenario: {} ---- {} =======\n".format(
+            self._data.scenario_tree.name, self._result)
+        end_line_length = len(output) - 3
+        output += "\n"
+
+        # Lis of all the actors
+        output += " > Ego vehicles:\n"
         for ego_vehicle in self._data.ego_vehicles:
-            self.logger.info("Ego vehicle:  %s", ego_vehicle)
+            output += "{}; ".format(ego_vehicle)
+        output += "\n\n"
 
-        actor_string = ""
+        output += " > Other actors:\n"
         for actor in self._data.other_actors:
-            actor_string += "{}; ".format(actor)
-        self.logger.info("Other actors: %s", actor_string)
-        self.logger.info("\n")
-        # pylint: disable=line-too-long
-        self.logger.info(
-            "                Actor             |            Criterion           |   Result    | Actual Value | Expected Value ")
-        self.logger.info(
-            "-----------------------------------------------------------------------------------------------------------------")
-        # pylint: enable=line-too-long
+            output += "{}; ".format(actor)
+        output += "\n\n"
+
+        # Simulation part
+        output += " > Simulation Information\n"
+
+        system_time = round(self._data.scenario_duration_system, 2)
+        game_time = round(self._data.scenario_duration_game, 2)
+        ratio = round(self._data.scenario_duration_game / self._data.scenario_duration_system, 3)
+
+        list_statistics = [["Start Time", "{}".format(self._start_time)]]
+        list_statistics.extend([["End Time", "{}".format(self._end_time)]])
+        list_statistics.extend([["Duration (System Time)", "{}s".format(system_time)]])
+        list_statistics.extend([["Duration (Game Time)", "{}s".format(game_time)]])
+        list_statistics.extend([["Ratio (System Time / Game Time)", "{}s".format(ratio)]])
+
+        output += tabulate(list_statistics, tablefmt='fancy_grid')
+        output += "\n\n"
+
+        # Criteria part
+        output += " > Criteria Information\n"
+        header = ['Actor', 'Criterion', 'Result', 'Actual Value', 'Expected Value']
+        list_statistics = [header]
 
         for criterion in self._data.scenario.get_criteria():
             name_string = criterion.name
@@ -97,27 +111,100 @@ class ResultOutputProvider(object):
             else:
                 name_string += " (Req.)"
 
-            self.logger.info("%24s (id=%3d) | %30s | %11s | %12.2f | %12.2f ",
-                             criterion.actor.type_id[8:],
-                             criterion.actor.id,
-                             name_string,
-                             # pylint: disable=line-too-long
-                             "FAILURE" if criterion.test_status == "RUNNING" else criterion.test_status,
-                             # pylint: enable=line-too-long
-                             criterion.actual_value,
-                             criterion.expected_value_success)
+            actor = "{} (id={})".format(criterion.actor.type_id[8:], criterion.actor.id)
+            criteria = name_string
+            result = "FAILURE" if criterion.test_status == "RUNNING" else criterion.test_status
+            actual_value = criterion.actual_value
+            expected_value = criterion.expected_value_success
 
-        # Handle timeout separately
-        # pylint: disable=line-too-long
-        self.logger.info("%33s | %30s | %11s | %12.2f | %12.2f ",
-                         "",
-                         "Duration",
-                         "SUCCESS" if self._data.scenario_duration_game < self._data.scenario.timeout else "FAILURE",
-                         self._data.scenario_duration_game,
-                         self._data.scenario.timeout)
-        # pylint: enable=line-too-long
+            list_statistics.extend([[actor, criteria, result, actual_value, expected_value]])
 
-        self.logger.info("\n")
+        # Timeout
+        actor = ""
+        criteria = "Timeout (Req.)"
+        result = "SUCCESS" if self._data.scenario_duration_game < self._data.scenario.timeout else "FAILURE"
+        actual_value = round(self._data.scenario_duration_game, 2)
+        expected_value = round(self._data.scenario.timeout, 2)
+
+        list_statistics.extend([[actor, criteria, result, actual_value, expected_value]])
+
+        # Global and final output message
+        list_statistics.extend([['', 'GLOBAL RESULT', self._result, '', '']])
+
+        output += tabulate(list_statistics, tablefmt='fancy_grid')
+        output += "\n"
+        output += " " + "=" * end_line_length + "\n"
+
+        return output
+
+    def _write_to_reportjson(self):
+        """
+        Write a machine-readable report to JSON
+
+        The resulting report has the following format:
+        {
+            criteria: [
+                {
+                    name: "CheckCollisions",
+                    expected: "0",
+                    actual: "2",
+                    optional: false,
+                    success: false
+                }, ...
+            ]
+        }
+        """
+        json_list = []
+
+        def result_dict(name, actor, optional, expected, actual, success):
+            """
+            Convenience function to convert its arguments into a JSON-ready dict
+            :param name: Name of the test criterion
+            :param actor: Actor ID as string
+            :param optional: If the criterion is optional
+            :param expected: The expected value of the criterion (eg 0 for collisions)
+            :param actual: The actual value
+            :param success: If the test was passed
+            :return: A dict data structure that will be written to JSON
+            """
+            return {
+                "name": name,
+                "actor": actor,
+                "optional": optional,
+                "expected": expected,
+                "actual": actual,
+                "success": success,
+            }
+
+        for criterion in self._data.scenario.get_criteria():
+            json_list.append(
+                result_dict(
+                    criterion.name,
+                    "{}-{}".format(criterion.actor.type_id[8:], criterion.actor.id),
+                    criterion.optional,
+                    criterion.expected_value_success,
+                    criterion.actual_value,
+                    criterion.test_status in ["SUCCESS", "ACCEPTABLE"]
+                )
+            )
+
+        # add one entry for duration
+        timeout = self._data.scenario.timeout
+        duration = self._data.scenario_duration_game
+        json_list.append(
+            result_dict(
+                "Duration", "all", False, timeout, duration, duration <= timeout
+            )
+        )
+
+        result_object = {
+            "scenario": self._data.scenario_tree.name,
+            "success": self._result in ["SUCCESS", "ACCEPTABLE"],
+            "criteria": json_list
+        }
+
+        with open(self._json, "w") as fp:
+            json.dump(result_object, fp, indent=4)
 
     def _write_to_junit(self):
         """

@@ -15,6 +15,7 @@ and finally triggers the scenario execution.
 
 from __future__ import print_function
 
+import glob
 import traceback
 import argparse
 from argparse import RawTextHelpFormatter
@@ -26,36 +27,21 @@ import os
 import signal
 import sys
 import time
+import json
 import pkg_resources
 
 import carla
 
 from srunner.scenarioconfigs.openscenario_configuration import OpenScenarioConfiguration
-from srunner.scenarioconfigs.route_scenario_configuration import RouteScenarioConfiguration
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider, CarlaActorPool
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenario_manager import ScenarioManager
-# pylint: disable=unused-import
-# For the following includes the pylint check is disabled, as these are accessed via globals()
-from srunner.scenarios.control_loss import ControlLoss
-from srunner.scenarios.follow_leading_vehicle import FollowLeadingVehicle, FollowLeadingVehicleWithObstacle
-from srunner.scenarios.maneuver_opposite_direction import ManeuverOppositeDirection
-from srunner.scenarios.no_signal_junction_crossing import NoSignalJunctionCrossing
-from srunner.scenarios.object_crash_intersection import VehicleTurningRight, VehicleTurningLeft
-from srunner.scenarios.object_crash_vehicle import StationaryObjectCrossing, DynamicObjectCrossing
-from srunner.scenarios.opposite_vehicle_taking_priority import OppositeVehicleRunningRedLight
-from srunner.scenarios.other_leading_vehicle import OtherLeadingVehicle
-from srunner.scenarios.signalized_junction_left_turn import SignalizedJunctionLeftTurn
-from srunner.scenarios.signalized_junction_right_turn import SignalizedJunctionRightTurn
-from srunner.scenarios.change_lane import ChangeLane
-from srunner.scenarios.cut_in import CutIn
-# pylint: enable=unused-import
 from srunner.scenarios.open_scenario import OpenScenario
 from srunner.scenarios.route_scenario import RouteScenario
-from srunner.tools.scenario_config_parser import ScenarioConfigurationParser
+from srunner.tools.scenario_parser import ScenarioConfigurationParser
 from srunner.tools.route_parser import RouteParser
 
 # Version of scenario_runner
-VERSION = 0.6
+VERSION = '0.9.9'
 
 
 class ScenarioRunner(object):
@@ -102,16 +88,11 @@ class ScenarioRunner(object):
         self.client = carla.Client(args.host, int(args.port))
         self.client.set_timeout(self.client_timeout)
 
+        self.traffic_manager = self.client.get_trafficmanager(int(self._args.trafficManagerPort))
+
         dist = pkg_resources.get_distribution("carla")
         if LooseVersion(dist.version) < LooseVersion('0.9.8'):
             raise ImportError("CARLA version 0.9.8 or newer required. CARLA version found: {}".format(dist))
-
-        # Load additional scenario definitions, if there are any
-        # If something goes wrong an exception will be thrown by importlib (ok here)
-        if self._args.additionalScenario != '':
-            module_name = os.path.basename(args.additionalScenario).split('.')[0]
-            sys.path.insert(0, os.path.dirname(args.additionalScenario))
-            self.additional_scenario_module = importlib.import_module(module_name)
 
         # Load agent if requested via command line args
         # If something goes wrong an exception will be thrown by importlib (ok here)
@@ -121,11 +102,12 @@ class ScenarioRunner(object):
             self.module_agent = importlib.import_module(module_name)
 
         # Create the ScenarioManager
-        self.manager = ScenarioManager(self._args.debug, self._args.timeout)
+        self.manager = ScenarioManager(self._args.debug, self._args.sync, self._args.timeout)
 
         # Create signal handler for SIGINT
         self._shutdown_requested = False
-        signal.signal(signal.SIGHUP, self._signal_handler)
+        if sys.platform != 'win32':
+            signal.signal(signal.SIGHUP, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
@@ -161,12 +143,24 @@ class ScenarioRunner(object):
         If scenario is not supported or not found, exit script
         """
 
-        if scenario in globals():
-            return globals()[scenario]
+        # Path of all scenario at "srunner/scenarios" folder + the path of the additional scenario argument
+        scenarios_list = glob.glob("{}/srunner/scenarios/*.py".format(os.getenv('SCENARIO_RUNNER_ROOT', "./")))
+        scenarios_list.append(self._args.additionalScenario)
 
-        for member in inspect.getmembers(self.additional_scenario_module):
-            if scenario in member and inspect.isclass(member[1]):
-                return member[1]
+        for scenario_file in scenarios_list:
+
+            # Get their module
+            module_name = os.path.basename(scenario_file).split('.')[0]
+            sys.path.insert(0, os.path.dirname(scenario_file))
+            scenario_module = importlib.import_module(module_name)
+
+            # And their members of type class
+            for member in inspect.getmembers(scenario_module, inspect.isclass):
+                if scenario in member:
+                    return member[1]
+
+            # Remove unused Python paths
+            sys.path.pop(0)
 
         print("Scenario '{}' not supported ... Exiting".format(scenario))
         sys.exit(-1)
@@ -175,19 +169,18 @@ class ScenarioRunner(object):
         """
         Remove and destroy all actors
         """
-        if self.world is not None and self.manager is not None \
-                and self._args.agent and self.manager.get_running_status():
+        # Simulation still running and in synchronous mode?
+        if self.manager is not None and self.manager.get_running_status() \
+                and self.world is not None and self._args.sync:
             # Reset to asynchronous mode
             settings = self.world.get_settings()
             settings.synchronous_mode = False
             settings.fixed_delta_seconds = None
             self.world.apply_settings(settings)
 
-        self.client.stop_recorder()
         self.manager.cleanup()
 
         CarlaDataProvider.cleanup()
-        CarlaActorPool.cleanup()
 
         for i, _ in enumerate(self.ego_vehicles):
             if self.ego_vehicles[i]:
@@ -208,12 +201,11 @@ class ScenarioRunner(object):
 
         if not self._args.waitForEgo:
             for vehicle in ego_vehicles:
-                self.ego_vehicles.append(CarlaActorPool.setup_actor(vehicle.model,
-                                                                    vehicle.transform,
-                                                                    vehicle.rolename,
-                                                                    True,
-                                                                    color=vehicle.color,
-                                                                    actor_category=vehicle.category))
+                self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
+                                                                             vehicle.transform,
+                                                                             vehicle.rolename,
+                                                                             color=vehicle.color,
+                                                                             actor_category=vehicle.category))
         else:
             ego_vehicle_missing = True
             while ego_vehicle_missing:
@@ -233,36 +225,77 @@ class ScenarioRunner(object):
 
             for i, _ in enumerate(self.ego_vehicles):
                 self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
+                CarlaDataProvider.register_actor(self.ego_vehicles[i])
 
         # sync state
-        CarlaDataProvider.perform_carla_tick()
+        if CarlaDataProvider.is_sync_mode():
+            self.world.tick()
+        else:
+            self.world.wait_for_tick()
 
     def _analyze_scenario(self, config):
         """
         Provide feedback about success/failure of a scenario
         """
 
+        # Create the filename
         current_time = str(datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
         junit_filename = None
+        json_filename = None
         config_name = config.name
         if self._args.outputDir != '':
             config_name = os.path.join(self._args.outputDir, config_name)
+
         if self._args.junit:
             junit_filename = config_name + current_time + ".xml"
+        if self._args.json:
+            json_filename = config_name + current_time + ".json"
         filename = None
         if self._args.file:
             filename = config_name + current_time + ".txt"
 
-        if not self.manager.analyze_scenario(self._args.output, filename, junit_filename):
+        if not self.manager.analyze_scenario(self._args.output, filename, junit_filename, json_filename):
             print("All scenario tests were passed successfully!")
         else:
             print("Not all scenario tests were successful")
             if not (self._args.output or filename or junit_filename):
                 print("Please run with --output for further information")
 
+    def _record_criteria(self, criteria, name):
+        """
+        Filter the JSON serializable attributes of the criterias and
+        dumps them into a file. This will be used by the metrics manager,
+        in case the user wants specific information about the criterias.
+        """
+        file_name = name[:-4] + ".json"
+
+        # Filter the attributes that aren't JSON serializable
+        with open('temp.json', 'w') as fp:
+
+            criteria_dict = {}
+            for criterion in criteria:
+
+                criterion_dict = criterion.__dict__
+                criteria_dict[criterion.name] = {}
+
+                for key in criterion_dict:
+                    if key != "name":
+                        try:
+                            key_dict = {key: criterion_dict[key]}
+                            json.dump(key_dict, fp, sort_keys=False, indent=4)
+                            criteria_dict[criterion.name].update(key_dict)
+                        except TypeError:
+                            pass
+
+        os.remove('temp.json')
+
+        # Save the criteria dictionary into a .json file
+        with open(file_name, 'w') as fp:
+            json.dump(criteria_dict, fp, sort_keys=False, indent=4)
+
     def _load_and_wait_for_world(self, town, ego_vehicles=None):
         """
-        Load a new CARLA world and provide data to CarlaActorPool and CarlaDataProvider
+        Load a new CARLA world and provide data to CarlaDataProvider
         """
 
         if self._args.reloadWorld:
@@ -285,22 +318,25 @@ class ScenarioRunner(object):
                             break
 
         self.world = self.client.get_world()
-        CarlaActorPool.set_client(self.client)
-        CarlaActorPool.set_world(self.world)
-        CarlaDataProvider.set_world(self.world)
 
-        if self._args.agent:
+        if self._args.sync:
             settings = self.world.get_settings()
             settings.synchronous_mode = True
             settings.fixed_delta_seconds = 1.0 / self.frame_rate
             self.world.apply_settings(settings)
 
+            self.traffic_manager.set_synchronous_mode(True)
+            self.traffic_manager.set_random_device_seed(int(self._args.trafficManagerSeed))
+
+        CarlaDataProvider.set_client(self.client)
+        CarlaDataProvider.set_world(self.world)
+        CarlaDataProvider.set_traffic_manager_port(int(self._args.trafficManagerPort))
+
         # Wait for the world to be ready
-        if self.world.get_settings().synchronous_mode:
-            CarlaDataProvider.perform_carla_tick()
+        if CarlaDataProvider.is_sync_mode():
+            self.world.tick()
         else:
             self.world.wait_for_tick()
-
         if CarlaDataProvider.get_map().name != town and CarlaDataProvider.get_map().name != "OpenDriveMap":
             print("The CARLA server uses the wrong map: {}".format(CarlaDataProvider.get_map().name))
             print("This scenario requires to use map: {}".format(town))
@@ -356,35 +392,24 @@ class ScenarioRunner(object):
             self._cleanup()
             return False
 
-        # Set the appropriate weather conditions
-        self.world.set_weather(config.weather)
-
-        # Set the appropriate road friction
-        if config.friction is not None:
-            friction_bp = self.world.get_blueprint_library().find('static.trigger.friction')
-            extent = carla.Location(1000000.0, 1000000.0, 1000000.0)
-            friction_bp.set_attribute('friction', str(config.friction))
-            friction_bp.set_attribute('extent_x', str(extent.x))
-            friction_bp.set_attribute('extent_y', str(extent.y))
-            friction_bp.set_attribute('extent_z', str(extent.z))
-
-            # Spawn Trigger Friction
-            transform = carla.Transform()
-            transform.location = carla.Location(-10000.0, -10000.0, 0.0)
-            self.world.spawn_actor(friction_bp, transform)
-
         try:
-            # Load scenario and run it
             if self._args.record:
-                self.client.start_recorder("{}/{}.log".format(os.getenv('ROOT_SCENARIO_RUNNER', "./"), config.name))
+                recorder_name = "{}/{}/{}.log".format(
+                    os.getenv('SCENARIO_RUNNER_ROOT', "./"), self._args.record, config.name)
+                self.client.start_recorder(recorder_name, True)
+
+            # Load scenario and run it
             self.manager.load_scenario(scenario, self.agent_instance)
             self.manager.run_scenario()
 
             # Provide outputs if required
             self._analyze_scenario(config)
 
-            # Remove all actors
+            # Remove all actors, stop the recorder and save all criterias (if needed)
             scenario.remove_all_actors()
+            if self._args.record:
+                self.client.stop_recorder()
+                self._record_criteria(self.manager.scenario.get_criteria(), recorder_name)
 
             result = True
 
@@ -401,23 +426,18 @@ class ScenarioRunner(object):
         Run conventional scenarios (e.g. implemented using the Python API of ScenarioRunner)
         """
         result = False
-        # Setup and run the scenarios for repetition times
-        for _ in range(int(self._args.repetitions)):
 
-            # Load the scenario configurations provided in the config file
-            scenario_configurations = None
-            scenario_config_file = ScenarioConfigurationParser.find_scenario_config(
-                self._args.scenario,
-                self._args.configFile)
-            if scenario_config_file is None:
-                print("Configuration for scenario {} cannot be found!".format(self._args.scenario))
-                continue
+        # Load the scenario configurations provided in the config file
+        scenario_configurations = ScenarioConfigurationParser.parse_scenario_configuration(
+            self._args.scenario,
+            self._args.configFile)
+        if not scenario_configurations:
+            print("Configuration for scenario {} cannot be found!".format(self._args.scenario))
+            return result
 
-            scenario_configurations = ScenarioConfigurationParser.parse_scenario_configuration(scenario_config_file,
-                                                                                               self._args.scenario)
-
-            # Execute each configuration
-            for config in scenario_configurations:
+        # Execute each configuration
+        for config in scenario_configurations:
+            for _ in range(self._args.repetitions):
                 result = self._load_and_run_scenario(config)
 
             self._cleanup()
@@ -428,7 +448,6 @@ class ScenarioRunner(object):
         Run the route scenario
         """
         result = False
-        repetitions = self._args.repetitions
 
         if self._args.route:
             routes = self._args.route[0]
@@ -438,14 +457,10 @@ class ScenarioRunner(object):
                 single_route = self._args.route[2]
 
         # retrieve routes
-        route_descriptions_list = RouteParser.parse_routes_file(routes, single_route)
-        # find and filter potential scenarios for each of the evaluated routes
-        # For each of the routes and corresponding possible scenarios to be evaluated.
+        route_configurations = RouteParser.parse_routes_file(routes, scenario_file, single_route)
 
-        for _, route_description in enumerate(route_descriptions_list):
-            for _ in range(repetitions):
-
-                config = RouteScenarioConfiguration(route_description, scenario_file)
+        for config in route_configurations:
+            for _ in range(self._args.repetitions):
                 result = self._load_and_run_scenario(config)
 
                 self._cleanup()
@@ -463,6 +478,7 @@ class ScenarioRunner(object):
             return False
 
         config = OpenScenarioConfiguration(self._args.openscenario, self.client)
+
         result = self._load_and_run_scenario(config)
         self._cleanup()
         return result
@@ -488,41 +504,54 @@ def main():
     main function
     """
     description = ("CARLA Scenario Runner: Setup, Run and Evaluate scenarios using CARLA\n"
-                   "Current version: " + str(VERSION))
+                   "Current version: " + VERSION)
 
+    # pylint: disable=line-too-long
     parser = argparse.ArgumentParser(description=description,
                                      formatter_class=RawTextHelpFormatter)
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + VERSION)
     parser.add_argument('--host', default='127.0.0.1',
                         help='IP of the host server (default: localhost)')
     parser.add_argument('--port', default='2000',
                         help='TCP port to listen to (default: 2000)')
-    parser.add_argument('--debug', action="store_true", help='Run with debug output')
+    parser.add_argument('--timeout', default="10.0",
+                        help='Set the CARLA client timeout value in seconds')
+    parser.add_argument('--trafficManagerPort', default='8000',
+                        help='Port to use for the TrafficManager (default: 8000)')
+    parser.add_argument('--trafficManagerSeed', default='0',
+                        help='Seed used by the TrafficManager (default: 0)')
+    parser.add_argument('--sync', action='store_true',
+                        help='Forces the simulation to run synchronously')
+    parser.add_argument('--list', action="store_true", help='List all supported scenarios and exit')
+
+    parser.add_argument(
+        '--scenario', help='Name of the scenario to be executed. Use the preposition \'group:\' to run all scenarios of one class, e.g. ControlLoss or FollowLeadingVehicle')
+    parser.add_argument('--openscenario', help='Provide an OpenSCENARIO definition')
+    parser.add_argument(
+        '--route', help='Run a route as a scenario (input: (route_file,scenario_file,[route id]))', nargs='+', type=str)
+
+    parser.add_argument(
+        '--agent', help="Agent used to execute the scenario. Currently only compatible with route-based scenarios.")
+    parser.add_argument('--agentConfig', type=str, help="Path to Agent's configuration file", default="")
+
     parser.add_argument('--output', action="store_true", help='Provide results on stdout')
     parser.add_argument('--file', action="store_true", help='Write results into a txt file')
     parser.add_argument('--junit', action="store_true", help='Write results into a junit file')
+    parser.add_argument('--json', action="store_true", help='Write results into a JSON file')
     parser.add_argument('--outputDir', default='', help='Directory for output files (default: this directory)')
-    parser.add_argument('--waitForEgo', action="store_true", help='Connect the scenario to an existing ego vehicle')
+
     parser.add_argument('--configFile', default='', help='Provide an additional scenario configuration file (*.xml)')
     parser.add_argument('--additionalScenario', default='', help='Provide additional scenario implementations (*.py)')
+
+    parser.add_argument('--debug', action="store_true", help='Run with debug output')
     parser.add_argument('--reloadWorld', action="store_true",
                         help='Reload the CARLA world before starting a scenario (default=True)')
-    # pylint: disable=line-too-long
-    parser.add_argument(
-        '--scenario', help='Name of the scenario to be executed. Use the preposition \'group:\' to run all scenarios of one class, e.g. ControlLoss or FollowLeadingVehicle')
+    parser.add_argument('--record', type=str, default='',
+                        help='Path were the files will be saved, relative to SCENARIO_RUNNER_ROOT.\nActivates the CARLA recording feature and saves to file all the criteria information.')
     parser.add_argument('--randomize', action="store_true", help='Scenario parameters are randomized')
-    parser.add_argument('--repetitions', default=1, help='Number of scenario executions')
-    parser.add_argument('--list', action="store_true", help='List all supported scenarios and exit')
-    parser.add_argument(
-        '--agent', help="Agent used to execute the scenario (optional). Currently only compatible with route-based scenarios.")
-    parser.add_argument('--agentConfig', type=str, help="Path to Agent's configuration file", default="")
-    parser.add_argument('--openscenario', help='Provide an OpenSCENARIO definition')
-    parser.add_argument(
-        '--route', help='Run a route as a scenario (input: (route_file,scenario_file,[number of route]))', nargs='+', type=str)
-    parser.add_argument('--record', action="store_true",
-                        help='Use CARLA recording feature to create a recording of the scenario')
-    parser.add_argument('--timeout', default="10.0",
-                        help='Set the CARLA client timeout value in seconds')
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + str(VERSION))
+    parser.add_argument('--repetitions', default=1, type=int, help='Number of scenario executions')
+    parser.add_argument('--waitForEgo', action="store_true", help='Connect the scenario to an existing ego vehicle')
+
     arguments = parser.parse_args()
     # pylint: enable=line-too-long
 
@@ -536,7 +565,7 @@ def main():
         parser.print_help(sys.stdout)
         return 1
 
-    if (arguments.route and arguments.openscenario) or (arguments.route and arguments.scenario):
+    if arguments.route and (arguments.openscenario or arguments.scenario):
         print("The route mode cannot be used together with a scenario (incl. OpenSCENARIO)'\n\n")
         parser.print_help(sys.stdout)
         return 1
@@ -548,6 +577,9 @@ def main():
 
     if arguments.route:
         arguments.reloadWorld = True
+
+    if arguments.agent:
+        arguments.sync = True
 
     scenario_runner = None
     result = True

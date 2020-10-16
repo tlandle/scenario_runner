@@ -97,19 +97,12 @@ class AutonomousAgent(object):
 
         return control
 
-    def all_sensors_ready(self):
-        """
-        Check if all sensors are ready
-        Returns true if sensors are ready
-        """
-        return self.sensor_interface.all_sensors_ready()
-
     def set_global_plan(self, global_plan_gps, global_plan_world_coord):
         """
         Set the plan (route) for the agent
         """
 
-        ds_ids = downsample_route(global_plan_world_coord, 32)
+        ds_ids = downsample_route(global_plan_world_coord, 1)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1])
                                          for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]

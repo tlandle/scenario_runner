@@ -12,11 +12,11 @@ bad road conditions, etc. and checks to see if the vehicle
 regains control and corrects it's course.
 """
 
-import random
+import numpy.random as random
 import py_trees
 import carla
 
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider, CarlaActorPool
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import ChangeNoiseParameters, ActorTransformSetter
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTest
 from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (InTriggerDistanceToLocation,
@@ -61,6 +61,7 @@ class ControlLoss(BasicScenario):
         self._reference_waypoint = self._map.get_waypoint(config.trigger_points[0].location)
         self.loc_list = []
         self.obj = []
+        self._randomize = randomize
         super(ControlLoss, self).__init__("ControlLoss",
                                           ego_vehicles,
                                           config,
@@ -72,8 +73,11 @@ class ControlLoss(BasicScenario):
         """
         Custom initialization
         """
-        self._distance = random.sample(range(10, 80), 3)
-        self._distance = sorted(self._distance)
+        if self._randomize:
+            self._distance = random.randint(low=10, high=80, size=3)
+            self._distance = sorted(self._distance)
+        else:
+            self._distance = [14, 48, 74]
         first_loc, _ = get_location_in_distance_from_wp(self._reference_waypoint, self._distance[0])
         second_loc, _ = get_location_in_distance_from_wp(self._reference_waypoint, self._distance[1])
         third_loc, _ = get_location_in_distance_from_wp(self._reference_waypoint, self._distance[2])
@@ -98,9 +102,9 @@ class ControlLoss(BasicScenario):
                                                               self.third_loc_prev.y,
                                                               self.third_loc_prev.z))
 
-        first_debris = CarlaActorPool.request_new_actor('static.prop.dirtdebris01', self.first_transform)
-        second_debris = CarlaActorPool.request_new_actor('static.prop.dirtdebris01', self.sec_transform)
-        third_debris = CarlaActorPool.request_new_actor('static.prop.dirtdebris01', self.third_transform)
+        first_debris = CarlaDataProvider.request_new_actor('static.prop.dirtdebris01', self.first_transform, 'prop')
+        second_debris = CarlaDataProvider.request_new_actor('static.prop.dirtdebris01', self.sec_transform, 'prop')
+        third_debris = CarlaDataProvider.request_new_actor('static.prop.dirtdebris01', self.third_transform, 'prop')
 
         first_debris.set_transform(self.first_transform)
         second_debris.set_transform(self.sec_transform)
