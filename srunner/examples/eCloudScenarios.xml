@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<scenarios>
+    <scenario name="eCloudScenario_1" type="eCloudVehicleTurningRight" town="Town01">
+        <ego_vehicle x="299.399994" y="59.330036" z="0.3" yaw="-0.000092" model="vehicle.lincoln.mkz2017" />
+    </scenario>
+</scenarios>
