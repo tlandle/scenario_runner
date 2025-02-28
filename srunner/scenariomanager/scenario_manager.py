@@ -51,7 +51,7 @@ class ScenarioManager(object):
         self.ego_vehicles = None
         self.other_actors = None
 
-        self._debug_mode = debug_mode
+        self._debug_mode = True
         self._agent = None
         self._sync_mode = sync_mode
         self._watchdog = None
@@ -134,6 +134,7 @@ class ScenarioManager(object):
                     timestamp = snapshot.timestamp
             if timestamp:
                 self._tick_scenario(timestamp)
+            time.sleep(.001)
 
         self.cleanup()
 
@@ -182,8 +183,8 @@ class ScenarioManager(object):
             if self.scenario_tree.status != py_trees.common.Status.RUNNING:
                 self._running = False
 
-        if self._sync_mode and self._running and self._watchdog.get_status():
-            CarlaDataProvider.get_world().tick()
+        #if self._sync_mode and self._running and self._watchdog.get_status():
+            #CarlaDataProvider.get_world().tick()
 
     def get_running_status(self):
         """

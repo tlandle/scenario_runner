@@ -107,11 +107,11 @@ class ScenarioRunner(object):
         self.manager = ScenarioManager(self._args.debug, self._args.sync, self._args.timeout)
 
         # Create signal handler for SIGINT
-        self._shutdown_requested = False
-        if sys.platform != 'win32':
-            signal.signal(signal.SIGHUP, self._signal_handler)
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        #self._shutdown_requested = False
+        #if sys.platform != 'win32':
+        #    signal.signal(signal.SIGHUP, self._signal_handler)
+        #signal.signal(signal.SIGINT, self._signal_handler)
+        #signal.signal(signal.SIGTERM, self._signal_handler)
 
         self._start_wall_time = datetime.now()
 
@@ -396,12 +396,12 @@ class ScenarioRunner(object):
                 scenario = RouteScenario(world=self.world,
                                          config=config,
                                          debug_mode=self._args.debug)
-            elif self._args.openscenario2:
-                scenario = OSC2Scenario(world=self.world,
-                                        ego_vehicles=self.ego_vehicles,
-                                        config=config,
-                                        osc2_file=self._args.openscenario2,
-                                        timeout=100000)
+            #elif self._args.openscenario2:
+                #scenario = OSC2Scenario(world=self.world,
+                #                        ego_vehicles=self.ego_vehicles,
+                #                        config=config,
+                #                        osc2_file=self._args.openscenario2,
+                #                        timeout=100000)
             else:
                 scenario_class = self._get_scenario_class_or_fail(config.type)
                 scenario = scenario_class(world=self.world,
@@ -533,8 +533,8 @@ class ScenarioRunner(object):
             result = self._run_openscenario()
         elif self._args.route:
             result = self._run_route()
-        elif self._args.openscenario2:
-            result = self._run_osc2()
+        #elif self._args.openscenario2:
+            #result = self._run_osc2()
         else:
             result = self._run_scenarios()
 

@@ -51,6 +51,8 @@ class BasicScenario(object):
         self.behavior_tree = None
         self.criteria_tree = None
 
+        print(config.route)
+
         # If no timeout was provided, set it to 60 seconds
         if not hasattr(self, 'timeout'):
             self.timeout = 60 
@@ -61,8 +63,10 @@ class BasicScenario(object):
             # Only init env for route mode, avoid duplicate initialization during runtime
             self._initialize_environment(world)
 
+        print("Initializing Actors")
         self._initialize_actors(config)
 
+        print("Waiting for Tick")
         if CarlaDataProvider.is_runtime_init_mode():
             world.wait_for_tick()
         elif CarlaDataProvider.is_sync_mode():
@@ -143,7 +147,7 @@ class BasicScenario(object):
         """
 
         # Set the appropriate weather conditions
-        world.set_weather(self.config.weather)
+        #world.set_weather(self.config.weather)
 
         # Set the appropriate road friction
         if self.config.friction is not None:
@@ -164,6 +168,7 @@ class BasicScenario(object):
         Default initialization of other actors.
         Override this method in child class to provide custom initialization.
         """
+        print("Init other actors")
         if config.other_actors:
             new_actors = CarlaDataProvider.request_new_actors(config.other_actors)
             if not new_actors:
@@ -189,6 +194,7 @@ class BasicScenario(object):
             return InTimeToArrivalToLocation(self.ego_vehicles[0], 2.0, start_location)
 
         # Scenario is part of a route.
+        config.route_var_name = "1"
         check_name = "WaitForBlackboardVariable: {}".format(config.route_var_name)
         return WaitForBlackboardVariable(config.route_var_name, True, False, name=check_name)
 

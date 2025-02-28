@@ -732,6 +732,9 @@ class InTriggerDistanceToLocation(AtomicCondition):
 
         location = CarlaDataProvider.get_location(self._actor)
 
+        print("Distance: %s" %(calculate_distance(location, self._target_location)))
+        #input()
+
         if location is None:
             return new_status
 

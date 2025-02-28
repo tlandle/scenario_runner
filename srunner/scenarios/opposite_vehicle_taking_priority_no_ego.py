@@ -43,16 +43,17 @@ class OppositeVehicleJunction(BasicScenario):
     """
 
     def __init__(self, world, ego_vehicles, config, randomize=False, debug_mode=False, criteria_enable=True,
-                 timeout=180):
+                 timeout=18000):
         """
         Setup all relevant parameters and create scenario
         and instantiate scenario manager
         """
         self._world = world
-        self._map = CarlaDataProvider.get_map()
-        self._source_dist = 30
-        self._sink_dist = 10
-        self._adversary_speed = 60 / 3.6 # m/s
+        self._map = self._world.get_map()
+        self._source_dist = 1
+
+        self._sink_dist = 1
+        self._adversary_speed = 40 / 3.6 # m/s
 
         if 'direction' in config.other_parameters:
             self._direction = config.other_parameters['direction']['value']
@@ -62,12 +63,10 @@ class OppositeVehicleJunction(BasicScenario):
 
         self.timeout = timeout
 
-        self._sync_time = 2.2  # Time the agent has to react to avoid the collision [s]
-        self._min_trigger_dist = 12.0  # Min distance to the collision location that triggers the adversary [m]
+        self._sync_time = 5  # Time the agent has to react to avoid the collision [s]
+        self._min_trigger_dist = 500.0  # Min distance to the collision location that triggers the adversary [m]
 
         self._lights = carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2
-
-        print("Initializing SCenario Runner OppositeVehicleJunction")
 
         super().__init__("OppositeVehicleJunction",
                          ego_vehicles,
@@ -80,10 +79,10 @@ class OppositeVehicleJunction(BasicScenario):
         """
         Custom initialization
         """
-        print("Initializing ACtors")
         ego_location = config.trigger_points[0].location
         self._ego_wp = CarlaDataProvider.get_map().get_waypoint(ego_location)
-
+        
+        print("Getting junction")
         # Get the junction
         starting_wp = self._ego_wp
         ego_junction_dist = 0
@@ -125,17 +124,25 @@ class OppositeVehicleJunction(BasicScenario):
         opposite_actor = CarlaDataProvider.request_new_actor(
             'vehicle.*', self._spawn_location, attribute_filter={'special_type': 'emergency'})
         if not opposite_actor:
-            raise Exception("Couldn't spawn the actor")
+            print("Could not spawn actor")
+            while True:
+              raise Exception("Couldn't spawn the actor at ")
+        print("spawned actor at :%s %s %s" %(self._spawn_location.location.x, self._spawn_location.location.y, self._spawn_location.location.z))
+        self.world.debug.draw_point(self._spawn_location.location, size=.1, life_time=1000)
         lights = opposite_actor.get_light_state()
         lights |= self._lights
         opposite_actor.set_light_state(carla.VehicleLightState(lights))
         self.other_actors.append(opposite_actor)
+        #while True:
+          #self.world.tick()
+          # do nothing
 
         opposite_transform = carla.Transform(
-            source_transform.location - carla.Location(z=500),
+            source_transform.location - carla.Location(z=0),
             source_transform.rotation
         )
         opposite_actor.set_transform(opposite_transform)
+        print("opposite_transform location: %s %s %s"%(opposite_transform.location.x, opposite_transform.location.y, opposite_transform.location.z))
         opposite_actor.set_simulate_physics(enabled=False)
 
         # Get the sink location
@@ -154,6 +161,8 @@ class OppositeVehicleJunction(BasicScenario):
         # Get the z component
         collision_wp = self._map.get_waypoint(self._collision_location)
         self._collision_location.z = collision_wp.transform.location.z
+        #while True:
+          #self.world.tick()
 
     def _create_behavior(self):
         raise NotImplementedError("Found missing behavior")
@@ -171,6 +180,7 @@ class OppositeVehicleJunction(BasicScenario):
         """
         Remove all actors and traffic lights upon deletion
         """
+        print("removing all actors")
         self.remove_all_actors()
 
 
@@ -180,7 +190,7 @@ class OppositeVehicleRunningRedLight(OppositeVehicleJunction):
     """
 
     def __init__(self, world, ego_vehicles, config, randomize=False, debug_mode=False, criteria_enable=True,
-                 timeout=180):
+                 timeout=18000):
         """
         Setup all relevant parameters and create scenario
         and instantiate scenario manager
@@ -191,8 +201,7 @@ class OppositeVehicleRunningRedLight(OppositeVehicleJunction):
         """
         Custom initialization
         """
-
-        print("Actors Initialized")
+        print("Initializing actors in OppositeVehicleRunningRedLight")
         super()._initialize_actors(config)
 
         tls = self._world.get_traffic_lights_in_junction(self._junction.id)
@@ -209,8 +218,8 @@ class OppositeVehicleRunningRedLight(OppositeVehicleJunction):
         Hero vehicle is entering a junction in an urban area, at a signalized intersection,
         while another actor runs a red lift, forcing the ego to break.
         """
-        sequence = py_trees.composites.Sequence(name="OppositeVehicleRunningRedLight")
         print("Creating behavior")
+        sequence = py_trees.composites.Sequence(name="OppositeVehicleRunningRedLight")
 
         # Wait until ego is close to the adversary
         trigger_adversary = py_trees.composites.Parallel(
@@ -224,6 +233,7 @@ class OppositeVehicleRunningRedLight(OppositeVehicleJunction):
 
         end_location = self._sink_wp.transform.location
         start_location = self._spawn_wp.transform.location
+        print("End Location: %s %s %s"%(end_location.x, end_location.y, end_location.z))
         time = start_location.distance(end_location) / self._adversary_speed
 
         main_behavior = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE)
@@ -265,7 +275,7 @@ class OppositeVehicleTakingPriority(OppositeVehicleJunction):
     """
 
     def __init__(self, world, ego_vehicles, config, randomize=False, debug_mode=False, criteria_enable=True,
-                 timeout=180):
+                 timeout=18000):
         """
         Setup all relevant parameters and create scenario
         and instantiate scenario manager

@@ -19,6 +19,23 @@ from srunner.scenarioconfigs.scenario_configuration import ScenarioConfiguration
 from srunner.scenarioconfigs.route_scenario_configuration import RouteConfiguration
 
 
+def convert_elem_to_transform(elem):
+    """Convert an ElementTree.Element to a CARLA transform"""
+    return carla.Transform(
+        carla.Location(
+            float(elem.attrib.get('x')),
+            float(elem.attrib.get('y')),
+            float(elem.attrib.get('z'))
+        ),
+        carla.Rotation(
+            roll=0.0,
+            pitch=0.0,
+            yaw=float(elem.attrib.get('yaw'))
+        )
+    )
+
+
+
 class ScenarioConfigurationParser(object):
 
     """
@@ -73,6 +90,8 @@ class ScenarioConfigurationParser(object):
                     if elem.tag == 'ego_vehicle':
                         config.ego_vehicles.append(ActorConfigurationData.parse_from_node(elem, 'hero'))
                         config.trigger_points.append(config.ego_vehicles[-1].transform)
+                    elif elem.tag == 'trigger_point':
+                        config.trigger_points.append(convert_elem_to_transform(elem))
                     elif elem.tag == 'other_actor':
                         config.other_actors.append(ActorConfigurationData.parse_from_node(elem, 'scenario'))
                     elif elem.tag == 'weather':
