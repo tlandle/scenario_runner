@@ -209,7 +209,7 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo:
+        if not self._args.waitForEgo and self._args.vehicle_index == 0:
             for vehicle in ego_vehicles:
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
@@ -217,6 +217,7 @@ class ScenarioRunner(object):
                                                                              random_location=vehicle.random_location,
                                                                              color=vehicle.color,
                                                                              actor_category=vehicle.category))
+
         else:
             ego_vehicle_missing = True
             while ego_vehicle_missing:
@@ -235,10 +236,11 @@ class ScenarioRunner(object):
                         break
 
             for i, _ in enumerate(self.ego_vehicles):
-                self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
-                self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
-                self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
-                self.ego_vehicles[i].apply_control(carla.VehicleControl())
+                #self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
+                #self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
+                #self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
+                #self.ego_vehicles[i].apply_control(carla.VehicleControl())
+
                 CarlaDataProvider.register_actor(self.ego_vehicles[i], ego_vehicles[i].transform)
 
         # sync state
@@ -408,7 +410,8 @@ class ScenarioRunner(object):
                                           ego_vehicles=self.ego_vehicles,
                                           config=config,
                                           randomize=self._args.randomize,
-                                          debug_mode=self._args.debug)
+                                          debug_mode=self._args.debug, 
+                                          vehicle_index=self._args.vehicle_index)
         except Exception as exception:                  # pylint: disable=broad-except
             print("The scenario cannot be loaded")
             traceback.print_exc()

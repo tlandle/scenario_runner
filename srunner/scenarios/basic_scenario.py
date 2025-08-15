@@ -32,7 +32,7 @@ class BasicScenario(object):
     """
 
     def __init__(self, name, ego_vehicles, config, world,
-                 debug_mode=False, terminate_on_failure=False, criteria_enable=False):
+                 debug_mode=False, terminate_on_failure=False, criteria_enable=False, vehicle_index=-1):
         """
         Setup all relevant parameters and create scenario
         and instantiate scenario manager

@@ -160,7 +160,7 @@ class ScenarioManager(object):
             self._watchdog.update()
 
             if self._debug_mode:
-                print("\n--------- Tick ---------\n")
+                print("\n--------- Tick Scenario ---------\n")
 
             # Update game time and actor information
             GameTime.on_carla_tick(timestamp)
@@ -170,6 +170,7 @@ class ScenarioManager(object):
                 ego_action = self._agent()  # pylint: disable=not-callable
 
             if self._agent is not None:
+                print(f"Ego action: {ego_action}")
                 self.ego_vehicles[0].apply_control(ego_action)
 
             # Tick scenario
