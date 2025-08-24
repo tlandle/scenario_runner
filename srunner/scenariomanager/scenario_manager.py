@@ -111,7 +111,7 @@ class ScenarioManager(object):
         self.ego_vehicles = scenario.ego_vehicles
         self.other_actors = scenario.other_actors
 
-        if ecav_vehicle_index != -1:
+        if ecav_vehicle_index == 0:
             self._ecav_client = Ecav2VehicleClient(vehicle=self.ego_vehicles[0])
             loop = asyncio.get_event_loop()
             loop.run_until_complete(self._ecav_client.run())
