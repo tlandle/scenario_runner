@@ -13,6 +13,7 @@ It must not be modified and is for reference only!
 from __future__ import print_function
 import sys
 import time
+import asyncio
 
 import py_trees
 
@@ -22,6 +23,7 @@ from srunner.scenariomanager.result_writer import ResultOutputProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
+from opencda.ecav2.ecloud_vehicle_client import Ecav2VehicleClient
 
 class ScenarioManager(object):
 
@@ -56,6 +58,8 @@ class ScenarioManager(object):
         self._sync_mode = sync_mode
         self._watchdog = None
         self._timeout = timeout
+
+        self._ecav_client = None
 
         self._running = False
         self._timestamp_last_run = 0.0
@@ -94,7 +98,7 @@ class ScenarioManager(object):
 
         CarlaDataProvider.cleanup()
 
-    def load_scenario(self, scenario, agent=None):
+    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-1):
         """
         Load a new scenario
         """
@@ -106,6 +110,12 @@ class ScenarioManager(object):
         self.scenario_tree = self.scenario.scenario_tree
         self.ego_vehicles = scenario.ego_vehicles
         self.other_actors = scenario.other_actors
+
+        if ecav_vehicle_index != -1:
+            self._ecav_client = Ecav2VehicleClient(ecav_vehicle_index)
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self._ecav_client.run())
+            loop.close()
 
         # To print the scenario tree uncomment the next line
         # py_trees.display.render_dot_tree(self.scenario_tree)
@@ -134,7 +144,14 @@ class ScenarioManager(object):
                     timestamp = snapshot.timestamp
             if timestamp:
                 self._tick_scenario(timestamp)
-            time.sleep(.001)
+
+            # before or after tick_scenario?
+            if self._ecav_client is not None:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(self._ecav_client.tick())
+                loop.close()
+
+            time.sleep(.001) # do we still need this?
 
         self.cleanup()
 
