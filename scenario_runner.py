@@ -404,11 +404,23 @@ class ScenarioRunner(object):
                 #                        timeout=100000)
             else:
                 scenario_class = self._get_scenario_class_or_fail(config.type)
-                scenario = scenario_class(world=self.world,
-                                          ego_vehicles=self.ego_vehicles,
-                                          config=config,
-                                          randomize=self._args.randomize,
-                                          debug_mode=self._args.debug)
+                scenario = scenario_class(
+                    world=self.world,
+                    ego_vehicles=self.ego_vehicles,
+                    config=config,
+                    randomize=self._args.randomize,
+                    debug_mode=self._args.debug,
+                    # NEW ───────────────────────────────────────────────
+                    scenario_params=self._args.openscenarioparams or []
+                    #   ‹openscenarioparams› arrives as a *list of strings*
+                    #   e.g. ["ego_vehicle_max_speed=70", "oncoming_vehicle_speed=45"]
+                    #   (keep it list so backward-compatible)
+                )
+                #scenario = scenario_class(world=self.world,
+                #                          ego_vehicles=self.ego_vehicles,
+                #                          config=config,
+                #                          randomize=self._args.randomize,
+                #                          debug_mode=self._args.debug)
         except Exception as exception:                  # pylint: disable=broad-except
             print("The scenario cannot be loaded")
             traceback.print_exc()
