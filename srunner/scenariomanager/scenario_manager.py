@@ -53,7 +53,7 @@ class ScenarioManager(object):
         self.ego_vehicles = None
         self.other_actors = None
 
-        self._debug_mode = True
+        self._debug_mode = debug_mode
         self._agent = None
         self._sync_mode = sync_mode
         self._watchdog = None
@@ -112,10 +112,10 @@ class ScenarioManager(object):
         self.other_actors = scenario.other_actors
 
         if ecav_vehicle_index == 0:
+            print("spawning eCAV2VehicleClient")
             self._ecav_client = Ecav2VehicleClient(vehicle=self.ego_vehicles[0])
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(self._ecav_client.run())
-            loop.close()
+            asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
+            print("eCAV2VehicleClient spawned")
 
         # To print the scenario tree uncomment the next line
         # py_trees.display.render_dot_tree(self.scenario_tree)
@@ -147,9 +147,9 @@ class ScenarioManager(object):
 
             # before or after tick_scenario?
             if self._ecav_client is not None:
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(self._ecav_client.tick())
-                loop.close()
+                print("ticking eCAV2VehicleClient")
+                asyncio.get_event_loop().run_until_complete(self._ecav_client.tick())
+                print("eCAV2VehicleClient ticked")
 
             time.sleep(.001) # do we still need this?
 
