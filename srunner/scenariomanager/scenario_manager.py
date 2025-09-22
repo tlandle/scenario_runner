@@ -25,6 +25,9 @@ from srunner.scenariomanager.watchdog import Watchdog
 
 from opencda.ecav2.ecloud_vehicle_client import Ecav2VehicleClient
 
+import ecloud_pb2 as ecloud
+import ecloud_pb2_grpc as ecloud_rpc
+
 class ScenarioManager(object):
 
     """
@@ -148,8 +151,10 @@ class ScenarioManager(object):
             # before or after tick_scenario?
             if self._ecav_client is not None:
                 print("ticking eCAV2VehicleClient")
-                asyncio.get_event_loop().run_until_complete(self._ecav_client.tick())
+                pong = asyncio.get_event_loop().run_until_complete(self._ecav_client.tick())
                 print("eCAV2VehicleClient ticked")
+                if pong.command == ecloud.Command.END:
+                    self.stop_scenario()
 
             time.sleep(.001) # do we still need this?
 
