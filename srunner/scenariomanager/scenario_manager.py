@@ -23,7 +23,7 @@ from srunner.scenariomanager.result_writer import ResultOutputProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from opencda.ecav2.ecloud_vehicle_client import Ecav2VehicleClient
+from opencda.ecav2.ecloud_actor_client import Ecav2ActorClient
 
 import ecloud_pb2 as ecloud
 import ecloud_pb2_grpc as ecloud_rpc
@@ -115,10 +115,10 @@ class ScenarioManager(object):
         self.other_actors = scenario.other_actors
 
         if ecav_vehicle_index == 0:
-            print("spawning eCAV2VehicleClient")
-            self._ecav_client = Ecav2VehicleClient(vehicle=self.ego_vehicles[0])
+            print("spawning Ecav2ActorClient")
+            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[0])
             asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
-            print("eCAV2VehicleClient spawned")
+            print("Ecav2ActorClient spawned")
 
         # To print the scenario tree uncomment the next line
         # py_trees.display.render_dot_tree(self.scenario_tree)
@@ -150,9 +150,9 @@ class ScenarioManager(object):
 
             # before or after tick_scenario?
             if self._ecav_client is not None:
-                print("ticking eCAV2VehicleClient")
+                print("ticking Ecav2ActorClient")
                 pong = asyncio.get_event_loop().run_until_complete(self._ecav_client.tick())
-                print("eCAV2VehicleClient ticked")
+                print("Ecav2ActorClient ticked")
                 if pong.command == ecloud.Command.END:
                     self.stop_scenario()
 
