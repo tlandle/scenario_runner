@@ -209,7 +209,7 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo and self._args.vehicle_index == 0:
+        if not self._args.waitForEgo and ( self._args.vehicle_index == 0 or self._args.distributed == False ):
             for vehicle in ego_vehicles:
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
@@ -236,10 +236,11 @@ class ScenarioRunner(object):
                         break
 
             for i, _ in enumerate(self.ego_vehicles):
-                #self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
-                #self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
-                #self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
-                #self.ego_vehicles[i].apply_control(carla.VehicleControl())
+                if self._args.distributed == False:
+                    self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
+                    self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
+                    self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
+                    self.ego_vehicles[i].apply_control(carla.VehicleControl())
 
                 CarlaDataProvider.register_actor(self.ego_vehicles[i], ego_vehicles[i].transform)
 
@@ -411,7 +412,8 @@ class ScenarioRunner(object):
                                           config=config,
                                           randomize=self._args.randomize,
                                           debug_mode=self._args.debug, 
-                                          vehicle_index=self._args.vehicle_index)
+                                          vehicle_index=self._args.vehicle_index,
+                                          distributed=self._args.distributed)
         except Exception as exception:                  # pylint: disable=broad-except
             print("The scenario cannot be loaded")
             traceback.print_exc()
