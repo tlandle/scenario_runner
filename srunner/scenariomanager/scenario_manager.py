@@ -114,9 +114,9 @@ class ScenarioManager(object):
         self.ego_vehicles = scenario.ego_vehicles
         self.other_actors = scenario.other_actors
 
-        if ecav_vehicle_index == 0:
+        if ecav_vehicle_index >= 0:
             print("spawning Ecav2ActorClient")
-            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[0])
+            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[ecav_vehicle_index])
             asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
             print("Ecav2ActorClient spawned")
 
@@ -124,7 +124,7 @@ class ScenarioManager(object):
         # py_trees.display.render_dot_tree(self.scenario_tree)
 
         if self._agent is not None:
-            self._agent.setup_sensors(self.ego_vehicles[0], self._debug_mode)
+            self._agent.setup_sensors(self.ego_vehicles[ecav_vehicle_index], self._debug_mode)
 
     def run_scenario(self):
         """

@@ -209,7 +209,7 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo and ( self._args.vehicle_index == 0 or self._args.distributed == False ):
+        if not self._args.waitForEgo and ( self._args.vehicle_index >= 0 or self._args.distributed is False ):
             for vehicle in ego_vehicles:
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
