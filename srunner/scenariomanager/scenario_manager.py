@@ -101,7 +101,7 @@ class ScenarioManager(object):
 
         CarlaDataProvider.cleanup()
 
-    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-1):
+    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-2): # -2 means non distributed; -1 is used for all non-ego vehicles in non-distributed sim
         """
         Load a new scenario
         """
@@ -124,7 +124,7 @@ class ScenarioManager(object):
         # py_trees.display.render_dot_tree(self.scenario_tree)
 
         if self._agent is not None:
-            self._agent.setup_sensors(self.ego_vehicles[ecav_vehicle_index], self._debug_mode)
+            self._agent.setup_sensors(self.ego_vehicles[ecav_vehicle_index if ecav_vehicle_index >= 0 else 0], self._debug_mode)
 
     def run_scenario(self):
         """
