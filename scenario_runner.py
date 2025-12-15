@@ -210,7 +210,11 @@ class ScenarioRunner(object):
         """
 
         if not self._args.waitForEgo and ( self._args.vehicle_index >= 0 or self._args.distributed is False ):
-            for vehicle in ego_vehicles:
+            for idx, vehicle in enumerate(ego_vehicles):
+                if self._args.vehicle_index >= 0 and idx != self._args.vehicle_index:
+                    self.ego_vehicles.append(None)
+                    continue
+
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
                                                                              vehicle.rolename,
