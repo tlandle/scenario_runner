@@ -209,12 +209,9 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo and ( self._args.vehicle_index >= 0 or self._args.distributed is False ):
-            for idx, vehicle in enumerate(ego_vehicles):
-                if self._args.vehicle_index >= 0 and idx != self._args.vehicle_index:
-                    self.ego_vehicles.append(None)
-                    continue
-
+        if not self._args.waitForEgo and ( self._args.vehicle_index == 0 or self._args.distributed is False ):
+            for _, vehicle in enumerate(ego_vehicles):
+                # the first ego vehicle client to check in spawns all actors; all others just wait
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
                                                                              vehicle.rolename,
@@ -240,7 +237,7 @@ class ScenarioRunner(object):
                         break
 
             for i, _ in enumerate(self.ego_vehicles):
-                if self._args.distributed == False:
+                if self._args.distributed == False or self._args.vehicle_index == i:
                     self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
                     self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
                     self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
