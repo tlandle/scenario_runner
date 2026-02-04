@@ -209,7 +209,7 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo:
+        if not self._args.waitForEgo and self._args.vehicle_index == 0:
             for vehicle in ego_vehicles:
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
@@ -217,6 +217,7 @@ class ScenarioRunner(object):
                                                                              random_location=vehicle.random_location,
                                                                              color=vehicle.color,
                                                                              actor_category=vehicle.category))
+
         else:
             ego_vehicle_missing = True
             while ego_vehicle_missing:
@@ -235,10 +236,11 @@ class ScenarioRunner(object):
                         break
 
             for i, _ in enumerate(self.ego_vehicles):
-                self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
-                self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
-                self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
-                self.ego_vehicles[i].apply_control(carla.VehicleControl())
+                #self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
+                #self.ego_vehicles[i].set_target_velocity(carla.Vector3D())
+                #self.ego_vehicles[i].set_target_angular_velocity(carla.Vector3D())
+                #self.ego_vehicles[i].apply_control(carla.VehicleControl())
+
                 CarlaDataProvider.register_actor(self.ego_vehicles[i], ego_vehicles[i].transform)
 
         # sync state
@@ -404,23 +406,13 @@ class ScenarioRunner(object):
                 #                        timeout=100000)
             else:
                 scenario_class = self._get_scenario_class_or_fail(config.type)
-                scenario = scenario_class(
-                    world=self.world,
-                    ego_vehicles=self.ego_vehicles,
-                    config=config,
-                    randomize=self._args.randomize,
-                    debug_mode=self._args.debug,
-                    # NEW ───────────────────────────────────────────────
-                    scenario_params=self._args.openscenarioparams or []
-                    #   ‹openscenarioparams› arrives as a *list of strings*
-                    #   e.g. ["ego_vehicle_max_speed=70", "oncoming_vehicle_speed=45"]
-                    #   (keep it list so backward-compatible)
-                )
-                #scenario = scenario_class(world=self.world,
-                #                          ego_vehicles=self.ego_vehicles,
-                #                          config=config,
-                #                          randomize=self._args.randomize,
-                #                          debug_mode=self._args.debug)
+                scenario = scenario_class(world=self.world,
+                                          ego_vehicles=self.ego_vehicles,
+                                          config=config,
+                                          randomize=self._args.randomize,
+                                          debug_mode=self._args.debug,
+                                          vehicle_index=self._args.vehicle_index,
+                                          scenario_params=self._args.openscenarioparams or [])
         except Exception as exception:                  # pylint: disable=broad-except
             print("The scenario cannot be loaded")
             traceback.print_exc()
@@ -435,7 +427,7 @@ class ScenarioRunner(object):
                 self.client.start_recorder(recorder_name, True)
 
             # Load scenario and run it
-            self.manager.load_scenario(scenario, self.agent_instance)
+            self.manager.load_scenario(scenario, self.agent_instance, ecav_vehicle_index=self._args.vehicle_index)
             self.manager.run_scenario()
 
             # Provide outputs if required

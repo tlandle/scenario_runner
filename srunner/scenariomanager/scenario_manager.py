@@ -13,6 +13,7 @@ It must not be modified and is for reference only!
 from __future__ import print_function
 import sys
 import time
+import asyncio
 
 import py_trees
 
@@ -22,6 +23,10 @@ from srunner.scenariomanager.result_writer import ResultOutputProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
+from opencda.ecav2.ecloud_actor_client import Ecav2ActorClient
+
+import ecloud_pb2 as ecloud
+import ecloud_pb2_grpc as ecloud_rpc
 
 class ScenarioManager(object):
 
@@ -51,11 +56,13 @@ class ScenarioManager(object):
         self.ego_vehicles = None
         self.other_actors = None
 
-        self._debug_mode = True
+        self._debug_mode = debug_mode
         self._agent = None
         self._sync_mode = sync_mode
         self._watchdog = None
         self._timeout = timeout
+
+        self._ecav_client = None
 
         self._running = False
         self._timestamp_last_run = 0.0
@@ -94,7 +101,7 @@ class ScenarioManager(object):
 
         CarlaDataProvider.cleanup()
 
-    def load_scenario(self, scenario, agent=None):
+    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-1):
         """
         Load a new scenario
         """
@@ -106,6 +113,12 @@ class ScenarioManager(object):
         self.scenario_tree = self.scenario.scenario_tree
         self.ego_vehicles = scenario.ego_vehicles
         self.other_actors = scenario.other_actors
+
+        if ecav_vehicle_index == 0:
+            print("spawning Ecav2ActorClient")
+            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[0], vehicle_index=ecav_vehicle_index)
+            asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
+            print("Ecav2ActorClient spawned")
 
         # To print the scenario tree uncomment the next line
         # py_trees.display.render_dot_tree(self.scenario_tree)
@@ -134,7 +147,16 @@ class ScenarioManager(object):
                     timestamp = snapshot.timestamp
             if timestamp:
                 self._tick_scenario(timestamp)
-            time.sleep(.001)
+
+            # before or after tick_scenario?
+            if self._ecav_client is not None:
+                print("ticking Ecav2ActorClient")
+                pong = asyncio.get_event_loop().run_until_complete(self._ecav_client.tick())
+                print("Ecav2ActorClient ticked")
+                if pong.command == ecloud.Command.END:
+                    self.stop_scenario()
+
+            time.sleep(.001) # do we still need this?
 
         self.cleanup()
 
@@ -160,7 +182,7 @@ class ScenarioManager(object):
             self._watchdog.update()
 
             if self._debug_mode:
-                print("\n--------- Tick ---------\n")
+                print("\n--------- Tick Scenario ---------\n")
 
             # Update game time and actor information
             GameTime.on_carla_tick(timestamp)
@@ -170,6 +192,7 @@ class ScenarioManager(object):
                 ego_action = self._agent()  # pylint: disable=not-callable
 
             if self._agent is not None:
+                print(f"Ego action: {ego_action}")
                 self.ego_vehicles[0].apply_control(ego_action)
 
             # Tick scenario

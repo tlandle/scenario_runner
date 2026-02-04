@@ -694,7 +694,6 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
                 actor = CarlaDataProvider._world.try_spawn_actor(blueprint, spawn_point)
 
         else:
-            print("WARNING: Using spawn point {}".format(spawn_point.location))
             # For non prop models, slightly lift the actor to avoid collisions with the ground
             z_offset = 0.2 if 'prop' not in model else 0
 
@@ -703,12 +702,7 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
             _spawn_point.location.x = spawn_point.location.x
             _spawn_point.location.y = spawn_point.location.y
             _spawn_point.location.z = spawn_point.location.z + z_offset
-            try:
-                actor = CarlaDataProvider._world.spawn_actor(blueprint, _spawn_point)
-            except Exception as e:
-                print("WARNING: Cannot spawn actor {} at position {} due to {}".format(model, spawn_point.location, e))
-                return None
-
+            actor = CarlaDataProvider._world.try_spawn_actor(blueprint, _spawn_point)
 
         if actor is None:
             print("WARNING: Cannot spawn actor {} at position {}".format(model, spawn_point.location))
