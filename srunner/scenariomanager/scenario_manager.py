@@ -101,11 +101,12 @@ class ScenarioManager(object):
 
         CarlaDataProvider.cleanup()
 
-    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-1):
+    def load_scenario(self, scenario, agent=None, ecav_vehicle_index=-1, distributed=False):
         """
         Load a new scenario
         """
         self._reset()
+        self._distributed = distributed
         self._agent = AgentWrapper(agent) if agent else None
         if self._agent is not None:
             self._sync_mode = True
@@ -114,7 +115,8 @@ class ScenarioManager(object):
         self.ego_vehicles = scenario.ego_vehicles
         self.other_actors = scenario.other_actors
 
-        if ecav_vehicle_index == 0:
+        # Only spawn Ecav2ActorClient in distributed mode
+        if distributed and ecav_vehicle_index == 0:
             print("spawning Ecav2ActorClient")
             self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[0], vehicle_index=ecav_vehicle_index)
             asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
@@ -134,8 +136,22 @@ class ScenarioManager(object):
         self.start_system_time = time.time()
         start_game_time = GameTime.get_time()
 
+        print(f"ScenarioManager: watchdog timeout = {self._timeout}s")
         self._watchdog = Watchdog(float(self._timeout))
-        self._watchdog.start()
+        self._watchdog_update_count = 0
+        self._watchdog_last_update_wall = time.time()
+        if self._ecav_client is not None:
+            # ecav_client drives its own tick lifecycle — safe to start immediately
+            self._watchdog.start()
+            self._watchdog_deferred = False
+        else:
+            # Without ecav_client the world may not be ticking yet:
+            #  - Sequential mode: main process hasn't entered its tick loop
+            #  - Distributed background spawner: server hasn't started ticking
+            # Defer watchdog until we confirm active world ticking (two
+            # advancing timestamps).
+            self._watchdog_deferred = True
+            self._deferred_tick_count = 0
         self._running = True
 
         while self._running:
@@ -179,7 +195,23 @@ class ScenarioManager(object):
         if self._timestamp_last_run < timestamp.elapsed_seconds and self._running:
             self._timestamp_last_run = timestamp.elapsed_seconds
 
-            self._watchdog.update()
+            # Start the deferred watchdog once we've seen two advancing
+            # timestamps, confirming the world is actively being ticked.
+            if getattr(self, '_watchdog_deferred', False):
+                self._deferred_tick_count = getattr(self, '_deferred_tick_count', 0) + 1
+                if self._deferred_tick_count >= 2:
+                    self._watchdog.start()
+                    self._watchdog_deferred = False
+
+            if not getattr(self, '_watchdog_deferred', False):
+                self._watchdog.update()
+                self._watchdog_update_count = getattr(self, '_watchdog_update_count', 0) + 1
+                now = time.time()
+                gap = now - getattr(self, '_watchdog_last_update_wall', now)
+                self._watchdog_last_update_wall = now
+                if self._watchdog_update_count <= 5 or self._watchdog_update_count % 20 == 0 or gap > 30:
+                    print(f"[WDT update #{self._watchdog_update_count}] "
+                          f"sim_t={timestamp.elapsed_seconds:.3f} gap={gap:.1f}s")
 
             if self._debug_mode:
                 print("\n--------- Tick Scenario ---------\n")

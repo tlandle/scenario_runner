@@ -412,7 +412,8 @@ class ScenarioRunner(object):
                                           randomize=self._args.randomize,
                                           debug_mode=self._args.debug,
                                           vehicle_index=self._args.vehicle_index,
-                                          scenario_params=self._args.openscenarioparams or [])
+                                          scenario_params=self._args.openscenarioparams or [],
+                                          distributed=getattr(self._args, 'distributed', False))
         except Exception as exception:                  # pylint: disable=broad-except
             print("The scenario cannot be loaded")
             traceback.print_exc()
@@ -427,7 +428,8 @@ class ScenarioRunner(object):
                 self.client.start_recorder(recorder_name, True)
 
             # Load scenario and run it
-            self.manager.load_scenario(scenario, self.agent_instance, ecav_vehicle_index=self._args.vehicle_index)
+            distributed = getattr(self._args, 'distributed', False)
+            self.manager.load_scenario(scenario, self.agent_instance, ecav_vehicle_index=self._args.vehicle_index, distributed=distributed)
             self.manager.run_scenario()
 
             # Provide outputs if required

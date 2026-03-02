@@ -12,10 +12,7 @@ It is for example used in the ScenarioManager
 from __future__ import print_function
 
 import simple_watchdog_timer as swt
-try:
-    import thread
-except ImportError:
-    import _thread as thread
+import _thread as thread
 
 
 class Watchdog(object):
@@ -76,8 +73,10 @@ class Watchdog(object):
     def _callback(self, watchdog):
         """Method called when the timer triggers. Raises a KeyboardInterrupt on
         the main thread and stops the watchdog."""
+        import time as _time
         self.pause()  # Good practice to stop it after the event occurs
-        print('Watchdog exception - Timeout of {} seconds occured'.format(self._timeout))
+        print('Watchdog exception - Timeout of {} seconds occured (wall={})'.format(
+            self._timeout, _time.strftime('%H:%M:%S')))
         self._failed = True
         thread.interrupt_main()
 
