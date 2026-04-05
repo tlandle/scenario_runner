@@ -23,7 +23,7 @@ from srunner.scenariomanager.result_writer import ResultOutputProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from opencda.ecav2.ecloud_actor_client import Ecav2ActorClient
+from ecav.ecav2.ecloud_actor_client import Ecav2ActorClient
 
 import ecloud_pb2 as ecloud
 import ecloud_pb2_grpc as ecloud_rpc
