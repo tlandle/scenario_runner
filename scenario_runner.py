@@ -209,7 +209,11 @@ class ScenarioRunner(object):
         Spawn or update the ego vehicles
         """
 
-        if not self._args.waitForEgo and self._args.vehicle_index == 0:
+        # In distributed mode only the vehicle_index==0 container spawns the ego.
+        # In sequential mode (distributed=False) there is no other process to spawn
+        # it, so always spawn regardless of vehicle_index.
+        _distributed = getattr(self._args, 'distributed', False)
+        if not self._args.waitForEgo and (self._args.vehicle_index == 0 or not _distributed):
             for vehicle in ego_vehicles:
                 self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
                                                                              vehicle.transform,
