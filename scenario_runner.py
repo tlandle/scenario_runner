@@ -194,7 +194,11 @@ class ScenarioRunner(object):
 
         for i, _ in enumerate(self.ego_vehicles):
             if self.ego_vehicles[i]:
-                if not self._args.waitForEgo and self.ego_vehicles[i] is not None and self.ego_vehicles[i].is_alive:
+                # Distributed: only the client that spawned the egos (index 0)
+                # destroys them; another client's cleanup must not take the
+                # vehicles away from the clients still driving them.
+                _owns_egos = (not getattr(self._args, 'distributed', False)) or self._args.vehicle_index == 0
+                if _owns_egos and not self._args.waitForEgo and self.ego_vehicles[i] is not None and self.ego_vehicles[i].is_alive:
                     print("Destroying ego vehicle {}".format(self.ego_vehicles[i].id))
                     self.ego_vehicles[i].destroy()
                 self.ego_vehicles[i] = None

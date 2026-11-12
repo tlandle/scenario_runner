@@ -116,9 +116,11 @@ class ScenarioManager(object):
         self.other_actors = scenario.other_actors
 
         # Only spawn Ecav2ActorClient in distributed mode
-        if distributed and ecav_vehicle_index == 0:
-            print("spawning Ecav2ActorClient")
-            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[0], vehicle_index=ecav_vehicle_index)
+        # Every vehicle client (index >= 0) drives the ego of its own index;
+        # index -1 is the non-ego client and has no actor client.
+        if distributed and 0 <= ecav_vehicle_index < len(self.ego_vehicles):
+            print("spawning Ecav2ActorClient for ego %d of %d" % (ecav_vehicle_index, len(self.ego_vehicles)))
+            self._ecav_client = Ecav2ActorClient(vehicle=self.ego_vehicles[ecav_vehicle_index], vehicle_index=ecav_vehicle_index)
             asyncio.get_event_loop().run_until_complete(self._ecav_client.run())
             print("Ecav2ActorClient spawned")
 
