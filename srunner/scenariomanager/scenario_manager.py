@@ -11,6 +11,7 @@ It must not be modified and is for reference only!
 """
 
 from __future__ import print_function
+import os
 import sys
 import time
 import asyncio
@@ -165,6 +166,15 @@ class ScenarioManager(object):
                     timestamp = snapshot.timestamp
             if timestamp:
                 self._tick_scenario(timestamp)
+                # SR_LOCKSTEP=1 (default off): tell the simulation loop which frame
+                # the scripted actors have been stepped for, so the next world tick
+                # waits for it (ecav/scenario_testing/utils/sr_lockstep.py).
+                if self._ecav_client is None and os.environ.get("SR_LOCKSTEP", "0") == "1":
+                    try:
+                        from ecav.scenario_testing.utils import sr_lockstep
+                        sr_lockstep.publish(snapshot.frame)
+                    except Exception as exc:  # the run goes on without lock step
+                        print(f"ScenarioManager: lock step publish failed: {exc}")
 
             # before or after tick_scenario?
             if self._ecav_client is not None:
